@@ -1,0 +1,492 @@
+{
+  "profile": "property",
+  "name": "物业项目月度经营分析",
+  "version": 2,
+  "_说明": [
+    "本文件是 ppt-skill 的【机读知识】。SKILL.md 给人读（为什么这样讲），",
+    "这里给工具读（几页、什么顺序、结论句怎么写）。",
+    "改这个文件就能调整 PPT 的叙事与配色，不需要改任何 Python 代码。"
+  ],
+  "page_rules": [
+    {
+      "max_minutes": 10,
+      "sections": [
+        "cover",
+        "summary",
+        "revenue",
+        "arrears",
+        "anomaly",
+        "actions",
+        "appendix"
+      ]
+    },
+    {
+      "max_minutes": 20,
+      "sections": [
+        "cover",
+        "agenda",
+        "summary",
+        "revenue",
+        "arrears",
+        "collection",
+        "efficiency",
+        "anomaly",
+        "actions",
+        "appendix",
+        "appendix"
+      ]
+    },
+    {
+      "max_minutes": 40,
+      "sections": [
+        "cover",
+        "agenda",
+        "summary",
+        "revenue",
+        "revenue",
+        "arrears",
+        "arrears",
+        "collection",
+        "collection",
+        "efficiency",
+        "efficiency",
+        "anomaly",
+        "anomaly",
+        "actions",
+        "appendix",
+        "appendix"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "key": "cover",
+      "label": "封面",
+      "layout": "cover",
+      "purpose": "项目 / 期间 / 数据口径"
+    },
+    {
+      "key": "agenda",
+      "label": "路线图",
+      "layout": "agenda",
+      "purpose": "六段式主线"
+    },
+    {
+      "key": "summary",
+      "label": "一页纸结论",
+      "layout": "kpi",
+      "chart": "KPI 卡片",
+      "keywords": [
+        "一页纸结论"
+      ],
+      "purpose": "三句话讲完：经营结果 / 最大异常 / 下月第一动作",
+      "narrative": [
+        {
+          "when": "top_share > 0.9",
+          "so_what": "本期 {top_name} 占 {top_share_pct}%，收入高度依赖单一来源；先解决结构问题，再谈增长。"
+        },
+        {
+          "when": "top_share > 0.6",
+          "so_what": "{top_name} 占 {top_share_pct}%，集中度偏高，需关注单一来源波动风险。"
+        },
+        {
+          "when": "",
+          "so_what": "共 {group_count} 个来源，合计 {total:万} 万元，分布相对均衡。"
+        }
+      ]
+    },
+    {
+      "key": "revenue",
+      "label": "收入",
+      "layout": "chart",
+      "chart": "bar",
+      "keywords": [
+        "收入",
+        "公共收益"
+      ],
+      "purpose": "物业费 / 公共收益 / 多种经营 / 其他；公共收益单独列示",
+      "data": {
+        "value_column": "账单金额(元)",
+        "group_column": "收费项"
+      },
+      "narrative": [
+        {
+          "when": "top_share > 0.9",
+          "so_what": "{top_name} 占收入 {top_share_pct}%，结构单一、抗风险能力弱；下月应把公共收益（场地租赁、广告位、临时摊位）作为专项来抓。"
+        },
+        {
+          "when": "top_share > 0.6",
+          "so_what": "{top_name} 占 {top_share_pct}%，仍属偏集中；建议把多种经营占比提升作为下月量化目标。"
+        },
+        {
+          "when": "group_count <= 1",
+          "so_what": "本期仅识别到 1 个收入科目，数据可能不完整，请确认是否遗漏分项。"
+        },
+        {
+          "when": "",
+          "so_what": "收入来源共 {group_count} 项，合计 {total:万} 万元，结构较为分散。"
+        }
+      ],
+      "rules": [
+        "公共收益依法属全体业主共有，必须单独列示，不得计入经营利润"
+      ],
+      "action_narrative": [
+        {
+          "when": "top_share > 0.9",
+          "action": "主因是收入来源单一：物业费之外几乎没有第二条腿。责任在经营部，时限 10/31，验收标准是公共收益≥2 万元/月并单独列示。"
+        },
+        {
+          "when": "",
+          "action": "保持现有收缴节奏，重点盯住新增欠费的产生速度。"
+        }
+      ]
+    },
+    {
+      "key": "arrears",
+      "label": "欠款与催缴",
+      "layout": "chart",
+      "chart": "bar",
+      "keywords": [
+        "欠款",
+        "欠费原因"
+      ],
+      "purpose": "欠款按欠费原因分层归因（服务争议/客观困难/恶意拖欠/失联空置），分层匹配催缴策略",
+      "data": {
+        "value_column": "未缴金额(元)",
+        "group_column": "欠费原因"
+      },
+      "narrative": [
+        {
+          "when": "top_share > 0.6",
+          "so_what": "欠款合计 {total:万} 万元，{top_name} 占 {top_share_pct}%，是催缴主战场。欠费原因分四层处置：服务争议先整改后催缴、客观困难给分期方案、恶意拖欠按账龄升级函件、失联空置上门核实留证。"
+        },
+        {
+          "when": "has(top_name)",
+          "so_what": "欠款合计 {total:万} 万元，共 {group_count} 类欠费原因，最大为 {top_name}（{top_share_pct}%）；按四分层匹配催缴策略，避免一刀切伤及善意欠费户。"
+        },
+        {
+          "when": "",
+          "so_what": "主表未关联到「欠费原因」列；需要 data/common 的「4、欠款明细报表.xlsx」参与关联后本页才能给出欠款归因。"
+        }
+      ],
+      "rules": [
+        "聚合口径必须用主表的「未缴金额(元)」：join 来的「总欠款金额(元)」是每户合计，会被该户的多条账单行复制，直接求和会重复计数",
+        "未匹配到欠费原因的行未缴金额占比极小（约 0.2%），排序取 Top 后自然排除"
+      ],
+      "action_narrative": [
+        {
+          "when": "",
+          "action": "催缴四分层：①服务争议户先闭环整改再催缴（客服部主责）；②困难户给分期承诺并留痕；③恶意拖欠户按账龄升级函件（温馨提醒函→催缴函→律师函预警）；④失联空置户上门核实并拍照留证。收费组主责，本月内完成首轮全覆盖。"
+        }
+      ]
+    },
+    {
+      "key": "collection",
+      "label": "收缴率",
+      "layout": "chart",
+      "chart": "bar",
+      "keywords": [
+        "收缴率",
+        "账龄"
+      ],
+      "purpose": "当期 / 累计 / 陈欠 / 账龄分层；收缴率是服务质量的果",
+      "narrative": [
+        {
+          "when": "收缴率 < 95",
+          "so_what": "当期收缴率 {收缴率:.2f}%，低于 95% 目标；欠款率 {欠款率:.2f}%。收缴率是服务质量的果：先查投诉闭环率与报修及时率这两个上游指标，再定催收动作。"
+        },
+        {
+          "when": "收缴率 < 98",
+          "so_what": "当期收缴率 {收缴率:.2f}% 接近目标，欠款率 {欠款率:.2f}%；重点转向账龄结构。"
+        },
+        {
+          "when": "has(收缴率)",
+          "so_what": "当期收缴率 {收缴率:.2f}% 达标，欠款率 {欠款率:.2f}%；关注账龄结构以防后续劣化。"
+        },
+        {
+          "when": "",
+          "so_what": "数据里没有可用于计算收缴率的列（需要「账单金额」与「未缴金额」）。"
+        }
+      ],
+      "rules": [
+        "当期收缴率分母 = 当月应收账单金额，不得混入陈欠回收",
+        "陈欠与当期必须分开列示"
+      ],
+      "action_narrative": [
+        {
+          "when": "rate < 95",
+          "action": "主因在服务端而非催收端：先把投诉闭环率提到 95%、报修及时率提到 90%，由客服部主责，9/30 前完成；收费组同步梳理 90 天以上账龄，10/15 前出具清单。"
+        },
+        {
+          "when": "",
+          "action": "维持现有催收节奏，按月复核账龄结构变化。"
+        }
+      ],
+      "metrics_chart": {
+        "_说明": "从派生指标直接取值画图（不是按列分组聚合）",
+        "chart": "column",
+        "series_name": "金额（万元）",
+        "number_format": "#,##0.00",
+        "axis_format": "#,##0.0",
+        "title": "收缴率：应收 / 实收 / 未缴",
+        "items": [
+          {
+            "metric": "账单金额(元)",
+            "label": "应收",
+            "scale": 10000,
+            "status": "info"
+          },
+          {
+            "metric": "已收金额(元)",
+            "label": "实收",
+            "scale": 10000,
+            "status": "ok"
+          },
+          {
+            "metric": "未缴金额(元)",
+            "label": "未缴",
+            "scale": 10000,
+            "status": "bad"
+          }
+        ]
+      }
+    },
+    {
+      "key": "efficiency",
+      "label": "人均效能",
+      "layout": "chart",
+      "chart": "column",
+      "keywords": [
+        "人均",
+        "效能"
+      ],
+      "purpose": "人均面积 / 人均产值 / 人工成本率 / 人均工单",
+      "narrative": [
+        {
+          "when": "平均单价(元) < 1",
+          "so_what": "平均单价 {平均单价(元):.2f} 元/m²·期，处于低位；此项应与收费标准的调整窗口一并复核，而不是单独压价。"
+        },
+        {
+          "when": "has(平均单价(元))",
+          "so_what": "平均单价 {平均单价(元):.2f} 元/m²·期。注意：外包替换自有员工会让分母变小、数字变好看，必须与成本率合并判断。"
+        },
+        {
+          "when": "",
+          "so_what": "缺少面积或单价列，人工效能无法计算；需要「实测收费面积」与「账单金额」。"
+        }
+      ],
+      "action_narrative": [
+        {
+          "when": "",
+          "action": "人工效能要看三件事：人均管理面积、人均产值、人工成本率。目前数据只能支撑平均单价，其余两项需补人力成本表。"
+        }
+      ],
+      "metrics_chart": {
+        "title": "效能：平均单价（元/m²·期）",
+        "items": [
+          {
+            "metric": "平均单价(元)",
+            "label": "平均单价",
+            "format": "{:.2f}",
+            "unit": "元/m²·期",
+            "target": 0.5,
+            "higher_is_better": false,
+            "note": "与源系统「收费单价 0.3 元/月」同口径"
+          }
+        ]
+      }
+    },
+    {
+      "key": "anomaly",
+      "label": "异常科目归因",
+      "layout": "cards",
+      "chart": "归因卡片",
+      "keywords": [
+        "异常",
+        "归因"
+      ],
+      "purpose": "三层穿透：偏差 → 驱动事件 → 责任与时限",
+      "data": {
+        "value_column": "未缴金额(元)",
+        "group_column": "收费项"
+      },
+      "narrative": [
+        {
+          "when": "has(top_name)",
+          "so_what": "最大科目为 {top_name}（{total:万} 万元）。归因必须做到三层穿透：量化偏差 → 追溯具体事件 → 落到责任部门与时限。没有责任人的归因等于没归因。"
+        },
+        {
+          "when": "",
+          "so_what": "本月未识别到明显异常科目，维持现有管控强度。"
+        }
+      ],
+      "action_narrative": [
+        {
+          "when": "has(top_name)",
+          "action": "归因闭环要求：科目 / 偏差额 / 偏差率 / 主因 / 可控性 / 责任部门 / 时限，七项缺一不可。主责部门本月内书面回复纠偏动作。"
+        }
+      ]
+    },
+    {
+      "key": "actions",
+      "label": "总结行动",
+      "layout": "cards",
+      "keywords": [
+        "行动项"
+      ],
+      "purpose": "3~5 项，每项责任人 + 时限 + 量化验收",
+      "narrative": [
+        {
+          "when": "",
+          "so_what": "每项行动必须带责任人 + 时限 + 量化验收标准；上月未闭环的事项本月开头先报，形成闭环。"
+        }
+      ],
+      "action_narrative": [
+        {
+          "when": "",
+          "action": "每项行动都写清责任人、时限、量化验收标准；上月未闭环的事项在本月开场先报，形成闭环。"
+        }
+      ]
+    },
+    {
+      "key": "appendix",
+      "label": "附录",
+      "layout": "appendix",
+      "purpose": "数据溯源与明细台账，正文只放结论图"
+    }
+  ],
+  "theme": {
+    "name": "物业经营（稳重深蓝）",
+    "_说明": "本技能的视觉风格**整套锁定**在这里：字体、字号、留白、装饰全部显式写出，不走工具默认值。改这一段就改全篇观感，且每次生成结果一致（此前只锁了颜色，字号/装饰跟着工具默认值漂移，同一份数据两次出图观感不同）。",
+    "fonts": {
+      "title": "微软雅黑",
+      "body": "微软雅黑",
+      "title_size": 20,
+      "body_size": 12,
+      "kicker_size": 10.5,
+      "card_title_size": 12,
+      "card_body_size": 10,
+      "footnote_size": 8.5,
+      "cover_title_size": 32,
+      "cover_subtitle_size": 14,
+      "cover_project_size": 18,
+      "kpi_value_size": 22,
+      "kpi_label_size": 10.5,
+      "chart_size": 10,
+      "line_spacing": 1.22
+    },
+    "canvas": {
+      "width_in": 13.333,
+      "height_in": 7.5,
+      "margin_in": 0.62,
+      "ratio": "16:9"
+    },
+    "layout": {
+      "_说明": "正文区 = body_top(1.52) → so_what_top(6.18)，约 4.66 英寸；内容撑不满时渲染器会整组垂直居中",
+      "body_top_in": 1.52,
+      "so_what_top_in": 6.18,
+      "cover_band_in": 4.3,
+      "kpi_columns": 3,
+      "cards_columns": 2,
+      "page_number": true
+    },
+    "decor": {
+      "_说明": "商务汇报惯例：直角卡片、页眉细分隔线、kicker 不加色条、结论栏用浅底色块；图表只留浅灰数值轴网格线，柱间距 70 让 2~3 根柱子不至于细成牙签",
+      "card_shape": "rect",
+      "header_rule": true,
+      "kicker_bar": false,
+      "so_what_style": "panel",
+      "cover_band": true,
+      "chart_gap_width": 70,
+      "chart_gridlines": true
+    },
+    "colors": {
+      "title": "142A4C",
+      "accent": "1E88E5",
+      "muted": "6B7786",
+      "panel": "F2F5F9",
+      "text": "333D4D",
+      "line": "E3EAF2",
+      "ok": "2EA06A",
+      "warn": "E8A31D",
+      "bad": "D9453D",
+      "on_dark": "FFFFFF",
+      "on_dark_muted": "A8CDF2"
+    },
+    "palette": [
+      "1E88E5",
+      "5BC0DE",
+      "142A4C",
+      "E8A31D",
+      "2EA06A",
+      "6B7786"
+    ]
+  },
+  "check": {
+    "must_contain": [
+      "一页纸结论",
+      "异常科目归因",
+      "总结行动"
+    ],
+    "_说明": "这三页是结构性必须项；旧版用的「当期收缴率/行动项」是旧脚本的措辞，已随版式更新"
+  },
+  "derived": {
+    "_说明": [
+      "从已有列算出业务指标 —— 知识在这里声明，机制在 tool/common/table_derive.py。",
+      "scope=row   逐行算，结果作为新列（可被 data.value_column 引用）",
+      "scope=total 按合计算出一个数（比值类必须用它，否则会逐行求比值再相加）",
+      "这些值会自动并入叙事模板的事实表，可用 {收缴率} 之类占位符引用。"
+    ],
+    "已收金额(元)": {
+      "expr": "账单金额(元) - 未缴金额(元)",
+      "scope": "row"
+    },
+    "收缴率": {
+      "expr": "已收金额(元) / 账单金额(元) * 100",
+      "scope": "total",
+      "format": "{:.2f}%"
+    },
+    "欠款率": {
+      "expr": "未缴金额(元) / 账单金额(元) * 100",
+      "scope": "total",
+      "format": "{:.2f}%"
+    },
+    "平均单价(元)": {
+      "expr": "账单金额(元) / 实测收费面积",
+      "scope": "total",
+      "format": "{:,.2f}"
+    }
+  },
+  "datasets": {
+    "_说明": "维表声明。主表是调用方给的数据文件（2、应收信息.xlsx），这里是需要拼上去的维度。",
+    "properties": {
+      "file": "1、房产客户信息.xlsx",
+      "key_column": "房产编码",
+      "pick": {
+        "实测收费面积（m²）": "实测收费面积"
+      }
+    },
+    "arrears": {
+      "file": "欠款明细",
+      "header_row": 1,
+      "drop_total_rows": true,
+      "key_column": "房产全称",
+      "pick": {
+        "总欠款金额（元）": "总欠款金额(元)",
+        "欠费原因": "欠费原因"
+      }
+    }
+  },
+  "join": [
+    {
+      "dataset": "properties",
+      "left_on": "房产全称",
+      "how": "left"
+    },
+    {
+      "dataset": "arrears",
+      "left_on": "房产全称",
+      "how": "left"
+    }
+  ]
+}

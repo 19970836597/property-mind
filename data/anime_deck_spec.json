@@ -1,0 +1,108 @@
+{
+  "profile": "anime",
+  "name": "动漫内容运营分析",
+  "version": 1,
+
+  "_说明": [
+    "与 ppt_skill/deck_spec.json 结构完全相同 —— 这就是「加一个知识文件",
+    "就支持一个新业务」的验证：工具层一行都没改。"
+  ],
+
+  "page_rules": [
+    {"max_minutes": 10, "sections": ["cover", "summary", "play", "sentiment", "actions", "appendix"]},
+    {"max_minutes": 20, "sections": ["cover", "agenda", "summary", "play", "follow", "sentiment", "actions", "appendix", "appendix"]},
+    {"max_minutes": 40, "sections": ["cover", "agenda", "summary", "play", "play", "follow", "follow", "sentiment", "sentiment", "actions", "actions", "appendix", "appendix"]}
+  ],
+
+  "sections": [
+    {"key": "cover", "label": "封面", "layout": "cover",
+     "purpose": "季度 / 作品范围 / 数据口径"},
+    {"key": "agenda", "label": "路线图", "layout": "agenda",
+     "purpose": "播放 → 追番 → 口碑 → 行动"},
+    {
+      "key": "summary", "label": "本季总览", "layout": "kpi", "chart": "KPI 卡片",
+      "keywords": ["总览"],
+      "purpose": "播放 / 追番 / 互动 / 均分",
+      "narrative": [
+        {"when": "top_share > 0.35",
+         "so_what": "{top_name} 贡献 {top_share_pct}% 播放量，头部效应明显；腰部作品缺少破圈话题，建议把二创激励向腰部倾斜。"},
+        {"when": "top_share > 0.22",
+         "so_what": "{top_name} 占 {top_share_pct}%，分布较健康；重点看第 4 集后的追番转化是否掉档。"},
+        {"when": "",
+         "so_what": "{group_count} 部作品合计 {total:万}，分布均匀，无明显头部依赖。"}
+      ]
+    },
+    {
+      "key": "play", "label": "播放表现", "layout": "chart", "chart": "bar",
+      "keywords": ["播放"],
+      "purpose": "各作品播放量与贡献占比",
+      "data": {"value_column": "播放量", "group_column": "作品"},
+      "narrative": [
+        {"when": "top_share > 0.35",
+         "so_what": "{top_name} 占播放 {top_share_pct}%，一家独大；一旦断更整季数据会塌，需提前储备替补内容。"},
+        {"when": "bottom_share_pct < 8",
+         "so_what": "播放最低的 {bottom_name} 仅占 {bottom_share_pct}%，已接近淘汰线；建议转短篇试水而非整季投入。"},
+        {"when": "",
+         "so_what": "共 {group_count} 部作品，合计 {total:万} 播放；结构基本健康。"}
+      ]
+    },
+    {
+      "key": "follow", "label": "追番转化", "layout": "chart", "chart": "line",
+      "keywords": ["追番"],
+      "purpose": "追番数走势与转化率",
+      "data": {"value_column": "追番数", "group_column": "作品"},
+      "narrative": [
+        {"when": "top_share > 0.3",
+         "so_what": "{top_name} 拿走 {top_share_pct}% 的追番，用户心智高度集中；其余作品需靠差异化题材而非同质竞争。"},
+        {"when": "",
+         "so_what": "追番转化分布相对均衡（合计 {total:万}）；应拉单集完播率定位掉档集数。"}
+      ]
+    },
+    {
+      "key": "sentiment", "label": "口碑与互动", "layout": "chart", "chart": "column",
+      "keywords": ["口碑", "弹幕"],
+      "purpose": "均分与弹幕互动",
+      "data": {"value_column": "弹幕数", "group_column": "作品"},
+      "narrative": [
+        {"when": "top_share > 0.4",
+         "so_what": "{top_name} 占弹幕 {top_share_pct}%，讨论度极度集中；高互动本身是二创素材，可优先做话题运营。"},
+        {"when": "",
+         "so_what": "弹幕合计 {total:万}，互动分布较均衡；口碑与播放需交叉看，避免只看播放量做续订决策。"}
+      ]
+    },
+    {
+      "key": "actions", "label": "下季动作", "layout": "cards",
+      "keywords": ["行动"],
+      "purpose": "排播、运营、止损三项动作",
+      "narrative": [
+        {"when": "",
+         "so_what": "三项动作分别对应破圈（腰部二创）、留存（完播率复盘）、止损（低效作品改短篇），下季度末统一复盘。"}
+      ]
+    },
+    {"key": "appendix", "label": "附录", "layout": "appendix",
+     "purpose": "明细数据与口径说明"}
+  ],
+
+  "theme": {
+    "name": "动漫（粉紫活力）",
+    "colors": {
+      "title": "3B1E5A",
+      "accent": "FF5FA2",
+      "muted": "8A7BA8",
+      "panel": "FFF0F6",
+      "text": "4A3B63",
+      "line": "F3D9E8",
+      "ok": "2ED8A7",
+      "warn": "FFB13D",
+      "bad": "FF4D6D",
+      "on_dark": "FFFFFF",
+      "on_dark_muted": "FFD6E7"
+    },
+    "palette": ["FF5FA2", "7C5CFF", "2ED8A7", "FFB13D", "4AC7FF", "FF4D6D"],
+    "fonts": {"title_size": 21, "cover_title_size": 34}
+  },
+
+  "check": {
+    "must_contain": ["播放", "追番", "行动"]
+  }
+}

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.idea/
+
+# 运行时产物（LLM 输出、技能产物、记忆存储）
+skill_outputs/
+test_output/
+memory_data/
+
+# 本地配置与密钥
+.env
+
+# 办公文件草稿
+~$*
