@@ -229,8 +229,8 @@ class LLM:
         # 或直接在初始化时传 model。
         self.model = (
             model
-            or provider_model
             or default_model
+            or provider_model
         )
 
         # ----------------------------------------------------

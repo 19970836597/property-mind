@@ -8,7 +8,8 @@ from core.agent import Agent
 from core.config import Config
 from core.llm import LLM
 from core.history.message import Message
-from tool.register import ToolRegister
+from core.paths import MEMORY_FILE
+from tools.register import ToolRegister
 
 from core.capability import (
     CapabilityRouter,
@@ -78,7 +79,7 @@ def _default_memory_paths() -> List[str]:
     """
     paths = [
         os.path.join(os.path.expanduser("~"), ".agent", "MEMORY.md"),
-        os.path.join(os.getcwd(), "MEMORY.md"),
+        str(MEMORY_FILE),
     ]
     extra = os.getenv("AGENT_MEMORY_FILE")
     if extra:
@@ -327,7 +328,7 @@ class ReActAgent(Agent):
         if not facts:
             return
         try:
-            path = os.path.join(os.getcwd(), "MEMORY.md")
+            path = str(MEMORY_FILE)
             new = [f.strip() for f in facts if f.strip()]
             if not new:
                 return

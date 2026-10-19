@@ -9,6 +9,7 @@ from ..base import BaseMemory, MemoryItem, MemoryConfig
 from ..storage.doc_store import SQLiteDocumentStore
 from ..embedding import get_text_embedder, get_dimension
 from ..storage.qdrant import QdrantConnectionManager, QdrantVectorStore
+from core.paths import MEMORY_STORAGE_DIR
 
 
 
@@ -62,7 +63,7 @@ class PerceptualMemory(BaseMemory):
         self.supported_modalities=set(self.config.perceptual_memory_modalities)
 
 
-        db_dir=getattr(self.config,"storage_path","./memory_data")
+        db_dir=getattr(self.config,"storage_path",str(MEMORY_STORAGE_DIR))
         os.makedirs(db_dir,exist_ok=True)
         db_path=os.path.join(db_dir,"memory.db")
         self.doc_store=SQLiteDocumentStore(db_path=db_path)

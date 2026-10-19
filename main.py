@@ -29,26 +29,30 @@ import sys
 
 from dotenv import load_dotenv
 
-# 核心模块只读 os.environ，.env 必须在这里显式加载
-load_dotenv()
-
 from core.llm import LLM
 from core.capability import CapabilityRouter
-from tool.tools import Tool, ToolParameter
-from tool.common.calculatortool import CalculatorTool
-from tool.common.data_file_tool import DataFileTool
-from tool.common.data_analysis_tool import DataAnalysisTool
-from tool.common.arrears_analysis_tool import ArrearsAnalysisTool
-from tool.common.docx_letter_tool import DocxLetterTool
-from tool.builtin.legal_rag_tool import LegalRAGTool
+from core.paths import MEMORY_FILE, PROJECT_ROOT, PROPERTY_SKILLS_DIR, PPT_SKILL_DIR as PPT_SKILL_PATH
+from tools.tools import Tool, ToolParameter
+from tools.common.calculatortool import CalculatorTool
+from tools.common.data_file_tool import DataFileTool
+from tools.common.data_analysis_tool import DataAnalysisTool
+from tools.common.arrears_analysis_tool import ArrearsAnalysisTool
+from tools.common.docx_letter_tool import DocxLetterTool
+from tools.builtin.legal_rag_tool import LegalRAGTool
 from skills.loader import Skill, normalize_skill_id
 from agents.sub_agent_tool import build_sub_agent
 from agents.react_agent.react_agent import ReActAgent
 from core.history.message import Message, MessageRole
 
+# 核心模块只读 os.environ，.env 必须在这里显式加载
+load_dotenv(PROJECT_ROOT / ".env")
+
 
 #: 本部署的 PPT 主数据源（data/common 下的表 2；表1/表4 由 deck_spec 自动 join）
 PPT_MAIN_DATA = "应收信息"
+
+#: PPT 技能目录（项目内唯一的 PPT 生成技能）。
+PPT_SKILL_DIR = str(PPT_SKILL_PATH)
 
 #: 封面项目名。不传时 loader 会退化成用文件名当项目名（封面印出
 #: 「2、应收信息 经营分析」这种东西），所以必须在装配层给定。
@@ -56,11 +60,16 @@ PPT_PROJECT_NAME = "物业管理项目"
 
 #: 从 request 里认领项目名：「XX小区/XX花园/XX project」等常见写法
 _PROJECT_HINT = re.compile(
-    r"([一-龥A-Za-z0-9]{2,12}(?:小区|花园|家园|公寓|广场|大厦|社区|项目))"
+    r"([一-龥A-Za-z0-9]{2,12}(?:小区|花园|家园|公寓|广场|大厦|社区|项目|园|苑))"
 )
 
 #: request 里显式提到其他数据文件时才允许换数据源（xlsx/xls/csv 文件名）
 _FILE_HINT = re.compile(r"[^\s，。,]*\.(?:xlsx|xls|csv)", re.IGNORECASE)
+
+
+_PERIOD_HINT = re.compile(
+    r"(\d{4}\s*年\s*\d{1,2}\s*[-—~至]\s*\d{1,2}\s*月)"
+)
 
 
 class PropertyPptSkill(Tool):
@@ -100,18 +109,27 @@ class PropertyPptSkill(Tool):
         if not request:
             return "未提供汇报需求（request 为空）。"
 
-        clean = {"request": request}
+        clean = {"request": request, "data": {}}
         # 用户在请求里显式点名了数据文件 → 尊重用户；否则固定主数据源
-        match = _FILE_HINT.search(request)
-        if match and PPT_MAIN_DATA not in match.group(0):
-            clean["file_name"] = match.group(0)
-        else:
-            clean["file_name"] = PPT_MAIN_DATA
-
         # 项目名：request 里点了小区/项目名就用它，否则用部署默认名，
         # 总之不能留空让 loader 拿文件名顶上
         hint = _PROJECT_HINT.search(request)
-        clean["project"] = hint.group(1) if hint else PPT_PROJECT_NAME
+        project = hint.group(1) if hint else PPT_PROJECT_NAME
+        # 去掉「生成/制作/用/一份」等请求前缀，避免把动词带进封面项目名。
+        project = re.sub(
+            r"^(?:帮我|请|生成|制作|做|用|为|关于|一份|一个)+",
+            "",
+            project,
+        ).strip()
+        clean["data"]["project"] = project or PPT_PROJECT_NAME
+        period_match = _PERIOD_HINT.search(request)
+        if period_match:
+            clean["data"]["period"] = (
+                period_match.group(1)
+                .replace("—", "-")
+                .replace("~", "-")
+                .replace("至", "-")
+            )
 
         return self.skill.run(clean)
 
@@ -123,7 +141,7 @@ def build_sub_agents(llm) -> list:
     """
     collection = build_sub_agent(
         llm,
-        skill_dir="skills/buttin/collection_assistant",
+        skill_dir=str(PROPERTY_SKILLS_DIR / "collection_assistant"),
         tools=[
             ArrearsAnalysisTool(),   # 账龄分档 + 催缴优先级
             DocxLetterTool(),        # 温馨提醒函 / 催缴函 / 律师函预警 (.docx)
@@ -139,7 +157,7 @@ def build_sub_agents(llm) -> list:
 
     legal = build_sub_agent(
         llm,
-        skill_dir="skills/buttin/legal_assistant",
+        skill_dir=str(PROPERTY_SKILLS_DIR / "legal_assistant"),
         tools=[
             LegalRAGTool(),          # legal 命名空间法务知识库（Qdrant 不可用时降级）
             DocxLetterTool(),        # 律师函 / 催缴函（正式函件）
@@ -154,6 +172,22 @@ def build_sub_agents(llm) -> list:
     )
 
     return [collection, legal]
+
+
+def _load_ppt_skill_v2(llm) -> Skill:
+    """Load the script-driven ppt-master property deck skill."""
+    skill = Skill(
+        PPT_SKILL_DIR,
+        normalize_skill_id("ppt_skill"),
+        llm=llm,
+        auto_resolve_data=False,
+    )
+    if skill.effective_mode() != "script" or not skill.script:
+        raise RuntimeError(
+            f"PPT 技能加载失败: {PPT_SKILL_DIR} "
+            f"模式={skill.effective_mode()} script={skill.script}"
+        )
+    return skill
 
 
 def build_router(llm) -> CapabilityRouter:
@@ -175,13 +209,9 @@ def build_router(llm) -> CapabilityRouter:
 
     # 技能：显式构造注册（不再全目录扫描，避免催费/法务技能重复暴露）
     # PPT 技能套网关固定主数据源（见 PropertyPptSkill），37% 法则原样注册
-    router.add_tool(PropertyPptSkill(Skill(
-        "skills/buttin/ppt_skill",
-        normalize_skill_id("ppt_skill"),       # → skill_ppt_skill
-        llm=llm,
-    )))
+    router.add_tool(PropertyPptSkill(_load_ppt_skill_v2(llm)))
     router.add_skill(Skill(
-        "skills/buttin/Optimalstop37-skill",
+        str(PROPERTY_SKILLS_DIR / "optimalstop37"),
         normalize_skill_id("Optimalstop37-skill"),  # → skill_optimalstop37_skill
         llm=llm,
     ))
@@ -331,7 +361,7 @@ def _quick_remember(agent: ReActAgent, content: str) -> None:
     if not content:
         print("用法：#要记住的内容")
         return
-    path = os.path.join(os.getcwd(), "MEMORY.md")
+    path = str(MEMORY_FILE)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(f"- {content}\n")
     for provider in agent.context.providers:

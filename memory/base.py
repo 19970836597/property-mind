@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
+from core.paths import MEMORY_STORAGE_DIR
+
 
 class MemoryItem:
     """记忆项数据结构"""
@@ -46,7 +48,7 @@ class MemoryItem:
 class MemoryConfig(BaseModel):
      
     # 存储路径
-    storage_path: str = "./memory_data"
+    storage_path: str = str(MEMORY_STORAGE_DIR)
     
     # 统计显示用的基础配置（仅用于展示）
     max_capacity: int = 100

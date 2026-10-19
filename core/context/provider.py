@@ -95,7 +95,7 @@ class MemoryFileProvider:
                 logger.warning("读取记忆文件失败 %s: %s", path, exc)
         merged = "\n\n".join(chunks)
         if len(merged) > self.max_chars:
-            merged = merged[: self.max_chars] + "\n…（记忆文件过长，已截断）"
+            merged = merged[: self.max_chars] + "\n…（记忆文件过长，已截断）"#直接截断/ 
         return merged
 
     def reload(self) -> None:

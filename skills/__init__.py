@@ -4,11 +4,11 @@
 技能 = 一个包含 ``SKILL.md`` 的目录（可位于任意深度）。
 
     skills/
-      buttin/                       ← 分组目录，本身不是技能
+      property/                     ← 分组目录，本身不是技能
         ppt_skill/
           SKILL.md                  ← frontmatter 声明 name/description/execution/script
           references/*.md           ← 会被合并进技能指令
-          scripts/build_deck.py     ← execution=script 时执行
+          scripts/build_property_deck.py  ← execution=script 时执行
         Optimalstop37-skill/
           SKILL.md
           scorecard.md

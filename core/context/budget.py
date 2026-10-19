@@ -29,6 +29,7 @@ __all__ = [
 
 #: 默认上下文窗口。qwen3.5:2b 这类小模型常见是 32k，取一个保守的通用值。
 #: 真实部署可通过 Config / 构造参数覆盖。
+#model settings
 DEFAULT_CONTEXT_WINDOW = 32000
 
 #: 安全余量：只敢用预算的这个比例。
@@ -109,7 +110,7 @@ class ContextBudget:
         self,
         total: int = DEFAULT_CONTEXT_WINDOW,
         safety_ratio: float = SAFETY_RATIO,
-        reserve_for_reply: int = 1024,
+        reserve_for_reply: int = 1024,##
     ):
         self.total = max(1, int(total))
         self.safety_ratio = float(safety_ratio)
@@ -158,7 +159,7 @@ class ContextBudget:
             f"留给回复 {self.reserve_for_reply:,})"
         ]
         if not self.layers:
-            lines.append("  （尚未组装）")
+            lines.append("  （尚未组装/分层）")
             return "\n".join(lines)
 
         width = max(len(name) for name in self.layers)

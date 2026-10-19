@@ -4,12 +4,12 @@
 设计目标
 --------
 1. **递归发现**：`skills/` 下任意深度的目录，只要包含 `SKILL.md` 就是一个技能。
-   因此 `skills/buttin/ppt_skill`、`skills/buttin/Optimalstop37-skill` 都能被自动注册。
+   例如 `skills/property/ppt_skill` 会被自动注册。
 2. **标准元数据**：解析 `SKILL.md` 顶部的 YAML frontmatter（name / description /
    execution / script / priority / always），缺失时按目录名与正文自动推断。
 3. **多执行模式**：一个技能可以按三种方式执行
    - ``llm``    ：把技能文档当 system prompt，单次调用 LLM（原行为）
-   - ``script`` ：执行技能自带脚本（如 ppt_skill 的 ``scripts/build_deck.py``），产出真实文件
+   - ``script`` ：执行技能自带脚本（如 ``ppt_skill/scripts/build_property_deck.py``），产出真实文件
    - ``react``  ：技能内部再跑一轮 ReAct 循环，允许调用子工具
    ``auto``（默认）会自动选择：有脚本走脚本，否则走 llm。
 
@@ -42,8 +42,9 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from tool.tools import ToolParameter
-from tool.register import ToolRegister
+from core.paths import PROJECT_ROOT
+from tools.tools import ToolParameter
+from tools.register import ToolRegister
 from core.capability import (
     CapabilityKind,
     CapabilityRouter,
@@ -89,6 +90,13 @@ NON_INSTRUCTION_DIRS = {
     "media",
     "images",
     "img",
+}
+
+#: Files at a skill root that are attribution/readme material, not instructions.
+NON_INSTRUCTION_FILES = {
+    "readme.md",
+    "sponsors.md",
+    "sponsors_cn.md",
 }
 
 # tool_calls 中最多回传给模型的字符数，避免上下文爆炸
@@ -214,8 +222,8 @@ def discover_skill_dirs(skills_root: str, recursive: bool = True) -> List[str]:
     """递归找出所有包含 SKILL.md 的技能目录（按路径排序）。
 
     约定：只要目录里有 `SKILL.md` 就是技能。因此
-    `skills/buttin` 本身不是技能（没有 SKILL.md），
-    但 `skills/buttin/ppt_skill` 是。
+    `skills/property` 本身不是技能（没有 SKILL.md），
+    但 `skills/property/ppt_skill` 是。
     """
     if not os.path.isdir(skills_root):
         return []
@@ -264,6 +272,8 @@ def _collect_markdown(skill_dir: str) -> List[Tuple[str, str]]:
         )
         for name in sorted(filenames):
             if not name.lower().endswith(".md"):
+                continue
+            if dirpath == skill_dir and name.lower() in NON_INSTRUCTION_FILES:
                 continue
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, skill_dir).replace("\\", "/")
@@ -892,6 +902,8 @@ class Skill:
                 "SKILL_RUN_DIR": run_dir,
                 "SKILL_RUN_ID": run_id,
                 "SKILL_REQUEST": request or "",
+                # 脚本可据此决定是否允许回退到项目默认数据。
+                "SKILL_AUTO_RESOLVE_DATA": "1" if self.auto_resolve_data else "0",
                 "PYTHONIOENCODING": "utf-8",
                 "PYTHONUTF8": "1",
             }
@@ -1070,7 +1082,7 @@ class Skill:
     def _resolve_output_dir(self, params: Dict[str, Any], workdir: str) -> str:
         """决定脚本产出的落盘目录。
 
-        关键：**默认写到工作区的 skill_outputs/，而不是技能包内部**。
+        关键：**默认写到工作区的 outputs/skills/，而不是技能包内部**。
         技能包是只读资产，往里面写产物既污染技能、又违反「技能可移植」的约定，
         而且 Agent 事后很难找到文件。
         """
@@ -1083,8 +1095,8 @@ class Skill:
             return os.path.abspath(env_dir)
 
         # 工作区（会话目录）优先；退化到 workdir
-        workspace = os.environ.get("SKILL_WORKSPACE") or os.getcwd()
-        return os.path.join(os.path.abspath(workspace), "skill_outputs")
+        workspace = os.environ.get("SKILL_WORKSPACE") or str(PROJECT_ROOT)
+        return os.path.join(os.path.abspath(workspace), "outputs", "skills")
 
     def _auto_resolve_data(
         self, request: str, params: Dict[str, Any], run_dir: str
@@ -1111,7 +1123,7 @@ class Skill:
             return None, notes
 
         try:
-            from tool.common.commons import find_files, resolve_common_dirs
+            from tools.common.commons import find_files, resolve_common_dirs
         except Exception as exc:  # pragma: no cover
             return None, [f"自动取数不可用（导入失败）: {exc}"]
 
@@ -1164,8 +1176,8 @@ class Skill:
 
         # 旧契约路径（向后兼容尚未迁移的技能）：表格 → 契约 JSON
         try:
-            from tool.common.deck_contract import frame_to_contract
-            from tool.common.table_io import HAS_PANDAS, read_table
+            from tools.common.deck_contract import frame_to_contract
+            from tools.common.table_io import HAS_PANDAS, read_table
         except Exception as exc:  # pragma: no cover
             return None, notes + [f"契约转换不可用（导入失败）: {exc}"]
 
@@ -1310,7 +1322,8 @@ def load_skill(
 
     meta, _document = load_skill_document(skill_dir)
 
-    resolved_id = skill_id or os.path.basename(skill_dir)
+    # 目录名只是默认值；需要稳定能力名的技能可在 frontmatter 声明 id。
+    resolved_id = skill_id or meta.get("id") or os.path.basename(skill_dir)
 
     # 注意：这里必须过滤掉值为 None 的键。否则会用 None 覆盖掉
     # Skill 内部的自动探测逻辑（例如 auto 发现 scripts/build_deck.py）。
@@ -1348,13 +1361,11 @@ def load_skills_from_directory(
     目录约定（支持任意深度）::
 
         skills/
-          ppt_skill/
-            SKILL.md
-          buttin/                     ← 分组目录，本身不是技能
+          property/                   ← 分组目录，本身不是技能
             ppt_skill/
               SKILL.md
-              scripts/build_deck.py
-            Optimalstop37-skill/
+              scripts/build_property_deck.py
+            optimalstop37/
               SKILL.md
               scorecard.md
 
@@ -1364,7 +1375,7 @@ def load_skills_from_directory(
         router: ``capability.CapabilityRouter``；提供时把技能注册进能力路由中心。
         tool_register: 兼容参数。技能**不再是 Tool**，因此该参数已废弃，
             传入只会得到一条提示（技能应交给 router）。
-        recursive: 是否递归搜索子目录（buttin/ 这类分组目录需要 True）。
+        recursive: 是否递归搜索子目录（property/ 这类分组目录需要 True）。
         tool_prefix: 技能名前缀，默认 ``skill_``。
 
     Returns:

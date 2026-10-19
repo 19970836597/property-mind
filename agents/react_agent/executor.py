@@ -28,7 +28,7 @@ class TaskScheduler:
         """
         remaining = set(s.index for s in self.steps)
         completed: Set[int] = set()
-        layers: List[List[StepNode]] = []
+        layers: List[List[StepNode]] = [] 
 
         while remaining:
             ready = []

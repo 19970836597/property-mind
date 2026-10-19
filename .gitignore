@@ -6,11 +6,13 @@ __pycache__/
 .pytest_cache/
 .idea/
 
-# 运行时产物（LLM 输出、技能产物、记忆存储）
-skill_outputs/
+# 运行时产物（技能产物、ppt-master 项目、记忆与分析结果）
+outputs/
 test_output/
-memory_data/
 
+# 旧版记忆目录：仅保留给仍在运行的旧进程，迁移完成后可删除
+memory_data/
+MEMORY.md
 # 本地配置与密钥
 .env
 

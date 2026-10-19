@@ -73,7 +73,7 @@ class ContextManager:
         budget: Optional[ContextBudget] = None,
         llm: Optional[Any] = None,
         compactor: Optional[Compactor] = None,
-        keep_recent_turns: int = 4,
+        keep_recent_turns: int = 4,##只能保留最近4轮对话
         verbose: bool = False,
     ):
         self.system_prompt = system_prompt or ""

@@ -59,7 +59,7 @@ class Compactor:
 
     def __init__(
         self,
-        llm: Optional[Any] = None,
+        llm: Optional[Any] = None,#压缩大模型
         keep_recent_turns: int = 4,
         tool_result_keep_chars: int = TOOL_RESULT_KEEP_CHARS,
     ):
@@ -184,7 +184,7 @@ class Compactor:
         if not old:
             return messages, ""
 
-        summary = self._summarize(old)
+        summary = self._summarize(old)  #生成摘要 优化点
         if summary:
             folded = [{
                 "role": "system",

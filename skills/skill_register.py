@@ -14,7 +14,7 @@
 --------
     from core.capability import CapabilityRouter
     from skills.skill_register import SkillRegister
-    from tool.common.calculatortool import CalculatorTool
+    from tools.common.calculatortool import CalculatorTool
     from core.llm import LLM
 
     llm = LLM(provider="qwen")
@@ -90,7 +90,7 @@ def build_skill_register(
         skills_root: 技能根目录，默认项目下的 ``skills/``。
         llm: 执行技能用的 LLM。
         router: 复用已有能力路由中心（例如已注册了 calculator / memory 工具）。
-        recursive: 是否递归搜索（``skills/buttin/xxx`` 这类分组需要 True）。
+        recursive: 是否递归搜索（``skills/property/xxx`` 这类分组需要 True）。
 
     Returns:
         已装载完毕的 :class:`SkillRegister`。

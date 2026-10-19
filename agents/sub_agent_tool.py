@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from core.capability import CapabilityRouter
 from skills.skill_register import load_skill_document
-from tool.tools import Tool, ToolParameter
+from tools.tools import Tool, ToolParameter
 
 __all__ = ["SubAgentTool", "build_sub_agent"]
 
