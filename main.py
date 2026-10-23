@@ -216,7 +216,20 @@ def build_router(llm) -> CapabilityRouter:
         llm=llm,
     ))
 
+    _register_optional_collection_rl(router)
     return router
+
+
+def _register_optional_collection_rl(router: CapabilityRouter) -> None:
+    """Register the RL collection tool only when explicitly enabled.
+
+    The tool is read-only and never sends SMS, calls, or letters.
+    """
+
+    if os.getenv("COLLECTION_RL_ENABLED", "false").lower() == "true":
+        from rl.tool import CollectionPolicyTool
+
+        router.add_tool(CollectionPolicyTool(os.getenv("COLLECTION_RL_POLICY")))
 
 
 def _run_once(agent: ReActAgent, text: str) -> None:

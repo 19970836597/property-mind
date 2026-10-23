@@ -87,6 +87,11 @@ python main.py --task "项目经理月度汇报"
 .venv\Scripts\python.exe scripts\dev\verify_context.py
 .venv\Scripts\python.exe scripts\dev\verify_memory.py
 
+# 训练与评测物业催缴 RL 策略（只生成建议，不执行催缴）
+.venv\Scripts\python.exe scripts\rl\train_collection_policy.py
+.venv\Scripts\python.exe scripts\rl\evaluate_collection_policy.py
+.venv\Scripts\python.exe scripts\rl\show_recommendations.py
+
 # 预览生成的 PPTX
 .venv\Scripts\python.exe scripts\tools\preview_deck.py outputs\skills\property_deck\<run>\deck.pptx
 
