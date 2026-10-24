@@ -9,9 +9,6 @@
           SKILL.md                  ← frontmatter 声明 name/description/execution/script
           references/*.md           ← 会被合并进技能指令
           scripts/build_property_deck.py  ← execution=script 时执行
-        Optimalstop37-skill/
-          SKILL.md
-          scorecard.md
 
 架构要点
 --------

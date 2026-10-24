@@ -51,7 +51,8 @@ MAIN_SYSTEM_PROMPT = """\
 3. 月度经营汇报、经营分析 PPT、"项目经理月度汇报" → 调用 skill_ppt_skill。
    request 里必须写明：「主数据源用 data/common 的 2、应收信息.xlsx」。
    用户明确指定了其他数据文件时才用别的；**不要自行猜测文件名**。
-4. 37%法则、最优停止、候选评分决策 → 调用 skill_optimalstop37_skill。
+4. 催缴预算分配、催缴策略建议、强化学习推荐 → 若能力清单中存在
+   collection_rl_policy，则调用它；该工具只生成人工审核建议，不执行催缴动作。
 5. 一般的数据查询/表格分析/计算 → data_file / data_analysis / calculator。
 
 执行规则：

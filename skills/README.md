@@ -8,7 +8,6 @@ skills/
 └─ property/
    ├─ collection_assistant/   催费助手（LLM 技能）
    ├─ legal_assistant/        法务助手（LLM 技能）
-   ├─ optimalstop37/          37% 决策技能
    └─ ppt_skill/
       ├─ SKILL.md
       ├─ LICENSE

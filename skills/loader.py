@@ -1365,9 +1365,6 @@ def load_skills_from_directory(
             ppt_skill/
               SKILL.md
               scripts/build_property_deck.py
-            optimalstop37/
-              SKILL.md
-              scorecard.md
 
     Args:
         skills_root: 技能根目录。

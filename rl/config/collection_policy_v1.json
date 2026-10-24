@@ -1,0 +1,112 @@
+{
+  "version": "collection-policy-config-v1",
+  "feature_version": "collection-case-v1",
+  "alpha": 0.5,
+  "ridge": 1.0,
+  "default_budget_units": 20,
+  "max_sample_fraction": 0.95,
+  "min_policy_samples_per_arm": 6,
+  "hazard_smoothing": {
+    "events": 1.0,
+    "at_risk": 20.0
+  },
+  "actions": {
+    "no_action": {
+      "cost": 0,
+      "review_days": 7
+    },
+    "reminder": {
+      "cost": 1,
+      "review_days": 7
+    },
+    "account_review": {
+      "cost": 2,
+      "review_days": 7
+    },
+    "phone_call": {
+      "cost": 3,
+      "review_days": 7
+    },
+    "formal_notice": {
+      "cost": 5,
+      "review_days": 14
+    },
+    "legal_review": {
+      "cost": 10,
+      "review_days": 30
+    }
+  },
+  "effect_profiles": {
+    "conservative": {
+      "description": "基准效果增量的 85%，用于压力测试",
+      "multipliers": {
+        "no_action": 1.0,
+        "reminder": 1.102,
+        "account_review": 1.017,
+        "phone_call": 1.2125,
+        "formal_notice": 1.2975,
+        "legal_review": 1.3825
+      }
+    },
+    "base": {
+      "description": "业务规则和保守经验给出的基准假设",
+      "multipliers": {
+        "no_action": 1.0,
+        "reminder": 1.12,
+        "account_review": 1.02,
+        "phone_call": 1.25,
+        "formal_notice": 1.35,
+        "legal_review": 1.45
+      }
+    },
+    "optimistic": {
+      "description": "基准效果增量的 115%，用于敏感性分析",
+      "multipliers": {
+        "no_action": 1.0,
+        "reminder": 1.138,
+        "account_review": 1.023,
+        "phone_call": 1.2875,
+        "formal_notice": 1.4025,
+        "legal_review": 1.5175
+      }
+    }
+  },
+  "reason_factors": {
+    "hardship_or_refusal": 0.85,
+    "property_defect": 0.8,
+    "dispute": 0.45,
+    "service_dissatisfaction": 0.7,
+    "vacancy_discount": 0.9,
+    "facility_issue": 0.9,
+    "unreachable": 0.65,
+    "unknown": 0.8
+  },
+  "reason_keywords": {
+    "hardship_or_refusal": [
+      "恶意拒交",
+      "经济困难"
+    ],
+    "property_defect": [
+      "房屋质量",
+      "地产遗留"
+    ],
+    "dispute": [
+      "纠纷",
+      "异议"
+    ],
+    "service_dissatisfaction": [
+      "服务不满"
+    ],
+    "vacancy_discount": [
+      "空置",
+      "打折"
+    ],
+    "facility_issue": [
+      "设施设备"
+    ],
+    "unreachable": [
+      "无法联系"
+    ]
+  },
+  "baseline_contact_cooldown_days": 7
+}
