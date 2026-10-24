@@ -42,6 +42,12 @@ from tools.builtin.legal_rag_tool import LegalRAGTool
 from skills.loader import Skill, normalize_skill_id
 from agents.sub_agent_tool import build_sub_agent
 from agents.react_agent.react_agent import ReActAgent
+from agents.conversation_mode import (
+    ConversationMode,
+    ConversationSession,
+    choose_collaboration_group,
+    choose_conversation_mode,
+)
 from core.history.message import Message, MessageRole
 
 # 核心模块只读 os.environ，.env 必须在这里显式加载
@@ -70,6 +76,10 @@ _FILE_HINT = re.compile(r"[^\s，。,]*\.(?:xlsx|xls|csv)", re.IGNORECASE)
 _PERIOD_HINT = re.compile(
     r"(\d{4}\s*年\s*\d{1,2}\s*[-—~至]\s*\d{1,2}\s*月)"
 )
+
+
+#: 群聊分流用：邮箱地址里的 @ 不算点名，先剔除
+_EMAIL_RE = re.compile(r"[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9-.]+")
 
 
 class PropertyPptSkill(Tool):
@@ -245,6 +255,125 @@ def _run_once(agent: ReActAgent, text: str) -> None:
         print(f"选中的能力:   {agent.last_selected or '（全部能力）'}")
 
 
+def _run_groupchat_once(groupchat, text: str) -> None:
+    """执行一轮群聊并打印发言人与路由信息。
+
+    群聊的最终回答由 manager 发布（非流式），这里整段打印；
+    调试信息沿用单聊口径：谁回了、为什么是他。
+    """
+    answer = groupchat.run(text)
+    name = getattr(groupchat, "group_name", "") or ""
+    prefix = f"「{name}」" if name else ""
+    print(f"\n群聊回答{prefix}:\n", answer)
+    if groupchat.last_speakers:
+        parts = ", ".join(
+            f"{s['display']}（{s['reason']}）" for s in groupchat.last_speakers
+        )
+        print(f"发言人: {parts}")
+    else:
+        print("发言人: manager（无人举手，兜底直答）")
+
+
+def _run_group_command(registry, line: str) -> None:
+    """`/group` 二级分发：群管理走这里，纯消息才进群聊。
+
+    用法：
+        /group create <群名> @成员…  建群并自动切换（manager恒在，不用指定）
+        /group list                   列出全部群
+        /group switch <群名>          切换活跃群
+        /group show                   看活跃群详情
+        /group add @成员              给活跃群加人
+        /group remove @成员           从活跃群移除人（至少留1人）
+        /group disband <群名>         解散群（默认群不可解散）
+        /group <消息>                 给活跃群发消息（兼容老行为）
+    """
+    rest = line.lstrip()[len("/group"):].strip()
+    if not rest:
+        print(_groupchat_status(registry.active))
+        return
+    parts = rest.split(None, 1)
+    verb, arg = parts[0].lower(), (parts[1] if len(parts) > 1 else "")
+
+    try:
+        if verb == "create":
+            sub = arg.split(None, 1)
+            if not sub:
+                print("用法：/group create <群名> @成员…（例如 /group create 催收群 @催费 @法务）")
+                return
+            chat = registry.create(sub[0], raw_mentions=sub[1] if len(sub) > 1 else "")
+            print(f"已建群「{sub[0]}」并切换为活跃群，成员："
+                  + "、".join(m.display for m in chat.members) + "（+ manager）。")
+        elif verb == "list":
+            print(registry.describe())
+        elif verb == "switch":
+            if not arg:
+                print("用法：/group switch <群名>")
+                return
+            registry.switch(arg)
+            print(f"已切换到「{arg}」。")
+        elif verb == "show":
+            print(_groupchat_status(registry.active))
+        elif verb == "add":
+            chat = registry.add_members(arg)
+            print("已加入，当前成员："
+                  + "、".join(m.display for m in chat.members) + "。")
+        elif verb == "remove":
+            chat = registry.remove_member(arg)
+            print("已移除，当前成员："
+                  + "、".join(m.display for m in chat.members) + "。")
+        elif verb == "disband":
+            if not arg:
+                print("用法：/group disband <群名>")
+                return
+            print(registry.disband(arg.split()[0]))
+        else:
+            # 不是子命令 → 整段当消息发给活跃群（兼容老行为）
+            _run_groupchat_once(registry.active, rest)
+    except ValueError as exc:
+        print(f"群操作失败：{exc}")
+    except Exception as exc:
+        print(f"群操作异常：{exc}")
+
+
+def _is_groupchat_input(text: str, groupchat=None) -> bool:
+    """是否走群聊：显式 @ 点名（点中已知 alias 或疑似名字）。
+
+    邮箱地址里的 @ 不算（先剔除，免得「发到 zhang@example.com」
+    被误判进群还多一句「没有找到 @example」的提示）。
+    /group 前缀由调用方在斜杠命令之前预拦截，这里不处理。
+    """
+    scrubbed = _EMAIL_RE.sub("", text or "")
+    if "@" not in scrubbed:
+        return False
+    if groupchat is None:
+        return True
+    from agents.groupchat import extract_mentions
+    mentioned, _, unknown = extract_mentions(scrubbed, groupchat.alias_map)
+    return bool(mentioned or unknown)
+
+
+def _groupchat_status(groupchat) -> str:
+    """群聊检视：群名 + 共享历史轮数 + 习惯条目（/memory 追加显示）。"""
+    try:
+        name = getattr(groupchat, "group_name", "") or ""
+        n_turns = len(groupchat.history.turns)
+        n_habits = len(getattr(groupchat, "habits", []))
+        members = ", ".join(
+            f"{m.display}({m.name})" for m in groupchat.members
+        ) or "（无）"
+        lines = [
+            f"  当前群「{name}」manager 恒在",
+            f"  群聊成员：{members}",
+            f"  共享历史：{n_turns} 条发言",
+            f"  表达偏好：{n_habits} 条",
+        ]
+        if n_habits:
+            lines.extend(f"    - {h}" for h in groupchat.habits)
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"  群聊状态读取失败: {exc}"
+
+
 def main() -> None:
     # Windows GBK 控制台兜底：中文输出（pandas 表格等）在 GBK 终端会崩
     try:
@@ -258,6 +387,19 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=8,
                         help="主 agent ReAct 最大步数（默认 8）")
     args = parser.parse_args()
+
+    # ---- 对话模式：交互式启动时先选，--task 固定走快速模式 ----
+    if args.task:
+        session = ConversationSession(ConversationMode.QUICK)
+    else:
+        selected_mode = choose_conversation_mode()
+        if selected_mode is None:
+            return
+        session = ConversationSession(selected_mode)
+        print(
+            f"\n对话模式：{session.mode.display_name}"
+            "（本会话不可切换）"
+        )
 
     llm = LLM()
     router = build_router(llm)
@@ -283,8 +425,40 @@ def main() -> None:
         _run_once(agent, args.task)
         return
 
-    # ---- 交互式 CLI：催费 / 法务 / 汇报由意图识别自动分派 ----
-    print("\n物业智能助手已就绪（主 agent 调度 + 子 agent 执行）。可输入：")
+    # ---- 协作模式：registry 持有多群 + 默认群；快速模式不装配群聊 ----
+    registry = None
+    groupchat = None
+    if session.group_chat_enabled:
+        # router 里只有 SubAgentTool 才有 .agent（Skill/Tool 都没有）。
+        from agents.groupchat import GroupRegistry
+
+        sub_tools = [
+            c for c in router
+            if getattr(c, "agent", None) is not None
+        ]
+        try:
+            registry = GroupRegistry(agent, sub_tools)
+        except Exception as exc:
+            print(f"\n协作模式初始化失败：{exc}")
+            print("本会话不会自动降级为快速模式，请修复后重新启动。")
+            return
+
+        groupchat = choose_collaboration_group(registry)
+        if groupchat is None:
+            print("已退出。")
+            return
+        group_members = ", ".join(
+            f"@{m.aliases[-1]}" for m in groupchat.members
+        ) or "（无）"
+
+    # ---- 交互式 CLI：模式决定普通消息的固定入口 ----
+    if session.group_chat_enabled:
+        print(f"  • 群聊：普通消息进入当前群；可 @成员（如 {group_members}），"
+              "manager 整理后统一发布")
+        print("  • 建群：/group create <群名> @成员…（自动切换）；"
+              "/group list/switch/show/add/remove/disband 管理群")
+    else:
+        print("  • 快速模式：普通消息由主 Agent 调度子 Agent；@ 按普通文本处理")
     print("  • 催费：\"分析欠款账龄\" / \"给欠费最多的业主生成催缴函\"")
     print("  • 法务：\"物业费催收有哪些法律红线？\" / \"催缴函怎么写才合规？\"")
     print("  • 汇报：\"项目经理月度汇报\"")
@@ -301,18 +475,47 @@ def main() -> None:
         if not user_input or user_input.lower() in ("exit", "quit", "退出"):
             break
 
+        # /group 群管理仅属于协作模式；快速模式不允许中途改变会话形态。
+        if user_input.lstrip().startswith("/group"):
+            if not session.group_chat_enabled:
+                print(
+                    "当前为快速模式，不能使用 /group；本会话模式不可切换，"
+                    "请退出后重新启动并选择协作模式。"
+                )
+                continue
+            _run_group_command(registry, user_input)
+            groupchat = registry.active  # 切换/解散后刷新指针
+            continue
+
         if user_input.startswith("/"):
-            _run_command(agent, user_input)
+            _run_command(agent, user_input, groupchat)
             continue
         if user_input.startswith("#"):
             _quick_remember(agent, user_input[1:].strip())
             continue
 
-        _run_once(agent, user_input)
+        def quick_handler(text: str) -> None:
+            _run_once(agent, text)
+
+        def group_handler(text: str) -> None:
+            if groupchat is None:
+                print("协作群聊不可用，请退出后重新启动。")
+                return
+            _run_groupchat_once(groupchat, text)
+
+        session.dispatch(
+            user_input,
+            quick_handler=quick_handler,
+            group_handler=group_handler,
+        )
 
 
-def _run_command(agent: ReActAgent, line: str) -> None:
-    """斜杠命令：上下文/记忆的检视与手动干预入口。"""
+def _run_command(agent: ReActAgent, line: str, groupchat=None) -> None:
+    """斜杠命令：上下文/记忆的检视与手动干预入口。
+
+    群聊集成：/clear 同时清空群聊历史（否则群里还留着旧话）；
+    /memory 追加群聊状态（发言轮数 + 习惯条目数）。
+    """
     cmd = line.split()[0].lower()
     ctx = agent.context
 
@@ -338,12 +541,25 @@ def _run_command(agent: ReActAgent, line: str) -> None:
         print("已把全部历史压缩为一条摘要。")
     elif cmd == "/clear":
         agent.clear_history()
-        print("已清空会话历史。")
+        if groupchat is not None:
+            groupchat.history.turns.clear()
+            print("已清空会话历史（含群聊）。")
+        else:
+            print("已清空会话历史。")
     elif cmd == "/memory":
         print("\n" + _memory_status(agent))
+        if groupchat is not None:
+            print(_groupchat_status(groupchat))
     elif cmd == "/help":
         print("命令：/context /compact /clear /memory /help；"
               "「#内容」写长期记忆；exit 退出。")
+        if groupchat is not None:
+            print("当前为协作模式；普通消息进入活跃群，可用 @ 点名成员。\n"
+                  "群管理：/group create <群名> @成员…（自动切换）"
+                  "/list/switch/show/add/remove/disband。")
+        else:
+            print("当前为快速模式；普通消息由主 Agent 处理，@ 不触发群聊。")
+        print("对话模式在本会话内不可切换；如需另一模式，请退出后重新启动。")
     else:
         print(f"未知命令 {cmd}，可用：/context /compact /clear /memory /help")
 
