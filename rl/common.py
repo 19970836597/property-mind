@@ -31,3 +31,4 @@ def recommendation_id(
         f"{case_id}|{action.value}|{policy_version}|{as_of.isoformat()}"
     ).encode("utf-8")
     return "rec_" + hashlib.sha256(payload).hexdigest()[:20]
+#住房id

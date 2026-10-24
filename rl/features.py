@@ -29,7 +29,7 @@ LAST_ACTIONS = [
 ]
 
 FEATURE_NAMES = [
-    "bias",
+    "bias",#偏置项
     "aging_known",
     "aging_months_capped",
     "amount_log",

@@ -1,4 +1,4 @@
-"""Train a budget-aware LinUCB policy against the collection simulator."""
+"""Train a budget-aware LinUCB policy against the collection simulator"""
 
 from __future__ import annotations
 

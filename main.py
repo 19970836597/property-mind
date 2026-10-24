@@ -12,7 +12,7 @@
       ├─ legal_agent       法务子agent（法务知识库检索 + 律师函）
       ├─ skill_ppt_skill   月度经营汇报 PPT 技能
       ├─ data_file / data_analysis / calculator  通用数据问答
-      └─ skill_optimalstop37_skill  37%法则决策技能
+      └─ collection_rl_policy  可选催缴策略建议（默认关闭）
 
 催费 / 法务子 agent 各有独立 system_prompt（技能包文档）+ 专属工具集，
 内部跑自己的 ReAct 循环（agents/sub_agent_tool.py）。
@@ -208,13 +208,8 @@ def build_router(llm) -> CapabilityRouter:
     router.add_tool(CalculatorTool())
 
     # 技能：显式构造注册（不再全目录扫描，避免催费/法务技能重复暴露）
-    # PPT 技能套网关固定主数据源（见 PropertyPptSkill），37% 法则原样注册
+    # PPT 技能套网关固定主数据源（见 PropertyPptSkill）
     router.add_tool(PropertyPptSkill(_load_ppt_skill_v2(llm)))
-    router.add_skill(Skill(
-        str(PROPERTY_SKILLS_DIR / "optimalstop37"),
-        normalize_skill_id("Optimalstop37-skill"),  # → skill_optimalstop37_skill
-        llm=llm,
-    ))
 
     _register_optional_collection_rl(router)
     return router

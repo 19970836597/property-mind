@@ -86,7 +86,7 @@ class ResponseModelParams(BaseModel):
 class ArmModel(BaseModel):
     action: ActionCode
     A: List[List[float]]
-    b: List[float]
+    b: List[float]###
 
 
 class PolicyArtifact(BaseModel):
