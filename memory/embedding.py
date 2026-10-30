@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 from typing import List, Optional, Union
 
@@ -39,7 +40,14 @@ class LocalTransformerEmbedding(EmbeddingModel):
          # 优先 sentence-transformers
         try:
             from sentence_transformers import SentenceTransformer
-            self._st_model = SentenceTransformer(self.model_name)
+            try:
+                # Prefer the local cache to avoid slow network probes on every start.
+                self._st_model = SentenceTransformer(
+                    self.model_name,
+                    local_files_only=True,
+                )
+            except Exception:
+                self._st_model = SentenceTransformer(self.model_name)
             test_vec = self._st_model.encode("test_text")
             self._dimension = len(test_vec)
             #检测是否能够运行
@@ -290,10 +298,10 @@ def _build_embedder() -> EmbeddingModel:
     if model_name:
         kwargs["model_name"] = model_name
     api_key = os.getenv("EMBED_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    if api_key:
+    if preferred == "dashscope" and api_key:
         kwargs["api_key"] = api_key
     base_url = os.getenv("EMBED_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL")
-    if base_url:
+    if preferred == "dashscope" and base_url:
         kwargs["base_url"] = base_url
     return create_embedding_model_with_fallback(preferred_type=preferred, **kwargs)
 
@@ -315,6 +323,22 @@ def get_dimension(default: int = 384) -> int:
         return int(getattr(get_text_embedder(), "dimension", default))
     except Exception:
         return int(default)
+
+
+def embedding_collection_name(
+    prefix: str = "memory_vectors",
+    explicit_env: Optional[str] = None,
+) -> str:
+    """Build a versioned collection name for the active embedding model."""
+    explicit = os.getenv(explicit_env or "", "").strip()
+    if explicit:
+        return explicit
+    model_name = os.getenv("EMBED_MODEL_NAME", "").strip()
+    if not model_name:
+        model_name = type(get_text_embedder()).__name__
+    slug = re.sub(r"[^a-z0-9]+", "_", model_name.lower()).strip("_")
+    slug = slug.removeprefix("sentence_transformers_")[-48:]
+    return f"{prefix}_{slug}_{get_dimension(384)}_v1"
 
 
 def refresh_embedder() -> EmbeddingModel:

@@ -88,7 +88,7 @@ def _post_process_pdf_text(text: str) -> str:
         if re.match(r'^\d+$', line):
             continue
 
-        if line.lower() in ['github', 'project', 'forks', 'stars', 'language']:
+        if line.lower() in ['物业', '小区', '楼栋', '业主', '报修',"物业费"]:
             continue
 
         cleaned_lines.append(line)

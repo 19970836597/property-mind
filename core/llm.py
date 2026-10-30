@@ -415,7 +415,10 @@ class LLM:
 
                 delta = chunk.choices[0].delta
 
-                reasoning = getattr(delta, "reasoning_content", None)
+                reasoning = (
+                    getattr(delta, "reasoning_content", None)
+                    or getattr(delta, "reasoning", None)
+                )
                 if reasoning:
                     yield {"type": "reasoning", "content": reasoning}
 

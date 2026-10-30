@@ -12,10 +12,15 @@ from datetime import datetime, timedelta
 import json
 import logging
 import math
+import os
 import numpy as np
 
 from ..base import BaseMemory, MemoryItem, MemoryConfig
-from ..embedding import get_text_embedder, get_dimension
+from ..embedding import (
+    embedding_collection_name,
+    get_text_embedder,
+    get_dimension,
+)
 
 
 # 配置日志
@@ -147,6 +152,10 @@ class SemanticMemory(BaseMemory):
             from ..storage.qdrant import QdrantConnectionManager
             qdrant_config = db_config.get_qdrant_config() or {}
             qdrant_config["vector_size"] = get_dimension()
+            qdrant_config["collection_name"] = (
+                os.getenv("SEMANTIC_VECTOR_COLLECTION", "").strip()
+                or embedding_collection_name("semantic_vectors")
+            )
             self.vector_store = QdrantConnectionManager.get_instance(**qdrant_config)
             logger.info("✅ Qdrant向量数据库初始化完成")
             

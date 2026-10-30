@@ -1,10 +1,214 @@
-"""文档分块模块 - 将解析后的文本切分为可索引的块"""
+"""文档分块模块 - 将解析后的文本切分为可索引的块
+
+本模块是分块逻辑的唯一归属：
+- 函数式流水线：``load_and_chunk_texts``（文件 → markdown → 段落 → chunk）
+- 对象式 API：``DocumentProcessor``（从 ``document.py`` 搬入，操作
+  ``Document`` / ``DocumentChunk`` 数据模型）
+"""
 
 import os
 import hashlib
-from typing import List, Dict, Optional, Set
+from datetime import datetime
+from typing import Any, List, Dict, Optional, Set
 
+from .document import Document, DocumentChunk
 from .parser import _convert_to_markdown
+
+
+class DocumentProcessor:
+    """对象式文档分块器（从 ``document.py`` 搬入，归属分块模块）。
+
+    与 ``load_and_chunk_texts`` 的区别：本类操作 ``Document`` /
+    ``DocumentChunk`` 数据模型，走简单的分隔符切分；后者是文件 →
+    markdown → 段落感知的函数式流水线。两者并存，新代码按需选用。
+    """
+
+    def __init__(
+        self,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+        separators: Optional[List[str]] = None
+    ):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.separators = separators or ["\n\n", "\n", "。", ".", " "]
+
+    def process_document(self, document: Document) -> List[DocumentChunk]:
+        """
+        处理文档，分割成块
+
+        Args:
+            document: 输入文档
+
+        Returns:
+            文档块列表
+        """
+        chunks = self._split_text(document.content)
+
+        document_chunks = []
+        for i, chunk_content in enumerate(chunks):
+            # 创建块的元数据
+            chunk_metadata = document.metadata.copy()
+            chunk_metadata.update({
+                "doc_id": document.doc_id,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "processed_at": datetime.now().isoformat()
+            })
+
+            chunk = DocumentChunk(
+                content=chunk_content,
+                metadata=chunk_metadata,
+                doc_id=document.doc_id,
+                chunk_index=i
+            )
+            document_chunks.append(chunk)
+
+        return document_chunks
+
+    def process_documents(self, documents: List[Document]) -> List[DocumentChunk]:
+        """
+        批量处理文档
+
+        Args:
+            documents: 文档列表
+
+        Returns:
+            所有文档块列表
+        """
+        all_chunks = []
+        for document in documents:
+            chunks = self.process_document(document)
+            all_chunks.extend(chunks)
+
+        return all_chunks
+
+    def _split_text(self, text: str) -> List[str]:
+        """
+        分割文本为块
+
+        Args:
+            text: 输入文本
+
+        Returns:
+            文本块列表
+        """
+        if len(text) <= self.chunk_size:
+            return [text]
+
+        chunks = []
+        start = 0
+
+        while start < len(text):
+            # 确定块的结束位置
+            end = start + self.chunk_size
+
+            if end >= len(text):
+                # 最后一块
+                chunks.append(text[start:])
+                break
+
+            # 寻找合适的分割点
+            split_point = self._find_split_point(text, start, end)
+
+            if split_point == -1:
+                # 没找到合适的分割点，强制分割
+                split_point = end
+
+            chunks.append(text[start:split_point])
+
+            # 计算下一块的开始位置（考虑重叠）
+            start = max(start + 1, split_point - self.chunk_overlap)
+
+        return chunks
+
+    def _find_split_point(self, text: str, start: int, end: int) -> int:
+        """
+        在指定范围内寻找最佳分割点
+
+        Args:
+            text: 文本
+            start: 开始位置
+            end: 结束位置
+
+        Returns:
+            分割点位置，-1表示未找到
+        """
+        # 从后往前寻找分隔符
+        for separator in self.separators:
+            # 在end附近寻找分隔符
+            search_start = max(start, end - 100)  # 在最后100个字符中寻找
+
+            for i in range(end - len(separator), search_start - 1, -1):
+                if text[i:i + len(separator)] == separator:
+                    return i + len(separator)
+
+        return -1
+
+    def merge_chunks(self, chunks: List[DocumentChunk], max_length: int = 2000) -> List[DocumentChunk]:
+        """
+        合并小的文档块
+
+        Args:
+            chunks: 文档块列表
+            max_length: 合并后的最大长度
+
+        Returns:
+            合并后的文档块列表
+        """
+        if not chunks:
+            return []
+
+        merged_chunks = []
+        current_chunk = chunks[0]
+
+        for next_chunk in chunks[1:]:
+            # 检查是否可以合并
+            combined_length = len(current_chunk.content) + len(next_chunk.content)
+
+            if (combined_length <= max_length and
+                current_chunk.doc_id == next_chunk.doc_id):
+                # 合并块
+                current_chunk.content += "\n" + next_chunk.content
+                current_chunk.metadata["total_chunks"] = current_chunk.metadata.get("total_chunks", 1) + 1
+            else:
+                # 不能合并，保存当前块
+                merged_chunks.append(current_chunk)
+                current_chunk = next_chunk
+
+        # 添加最后一个块
+        merged_chunks.append(current_chunk)
+
+        return merged_chunks
+
+    def filter_chunks(self, chunks: List[DocumentChunk], min_length: int = 50) -> List[DocumentChunk]:
+        """
+        过滤太短的文档块
+
+        Args:
+            chunks: 文档块列表
+            min_length: 最小长度
+
+        Returns:
+            过滤后的文档块列表
+        """
+        return [chunk for chunk in chunks if len(chunk.content.strip()) >= min_length]
+
+    def add_chunk_metadata(self, chunks: List[DocumentChunk], metadata: Dict[str, Any]) -> List[DocumentChunk]:
+        """
+        为文档块添加额外元数据
+
+        Args:
+            chunks: 文档块列表
+            metadata: 要添加的元数据
+
+        Returns:
+            更新后的文档块列表
+        """
+        for chunk in chunks:
+            chunk.metadata.update(metadata)
+
+        return chunks
 
 
 def _detect_lang(sample: str) -> str:
@@ -30,8 +234,8 @@ def _is_cjk(ch: str) -> bool:
 
 def _hard_split_text(
     text: str,
-    max_chars: int = 6000,
-    overlap_chars: int = 300
+    max_chars: int = 1000,
+    overlap_chars: int = 200
 ) -> List[str]:
     """
     文本硬切分，根据中文标点符号和换行符切分
@@ -259,8 +463,8 @@ def _chunk_paragraphs(paragraphs: List[Dict], chunk_tokens: int, overlap_tokens:
 
 def load_and_chunk_texts(
     paths: List[str],
-    chunk_size: int = 800,
-    chunk_overlap: int = 100,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
     namespace: Optional[str] = None,
     source_label: str = "rag"
 ) -> List[Dict]:
@@ -292,8 +496,8 @@ def load_and_chunk_texts(
 
             safe_contents = _hard_split_text(
                 content,
-                max_chars=6000,
-                overlap_chars=300
+                max_chars=1000,
+                overlap_chars=200
             )
 
             for sub_index, safe_content in enumerate(safe_contents):

@@ -21,9 +21,9 @@ Qdrant、Neo4j、embedding 都是可选项，不可用时对应能力会自动�
 ## 目录结构
 
 ```text
-main.py                     CLI 入口：装配能力表并启动主 agent
+main.py                     CLI 入口：装配能力表并启动主 agent / 群聊
 core/                       框架核心：LLM、能力路由、上下文、历史
-agents/                     ReAct agent、规划器、子 agent
+agents/                     ReAct agent、规划器、子 agent、群聊
 memory/                     记忆存储与 RAG
 tools/                      工具实现（原 tool/）
 rl/                         催缴策略 RL：回款模型、LinUCB、预算分配与评测
@@ -88,6 +88,12 @@ python main.py --task "项目经理月度汇报"
 # 直接生成固定 10 页 PPT
 .venv\Scripts\python.exe scripts\ops\generate_property_deck.py --project "鸣X园"
 
+# 群聊自动化测试（@解析 / 自荐打分 / 双层记忆 / 建群多群，纯逻辑不调 LLM）
+.venv\Scripts\python.exe -m pytest tests/test_groupchat_mention.py tests/test_groupchat_selector.py tests/test_groupchat_memory.py tests/test_groupchat_flow.py tests/test_groupchat_registry.py -v
+
+# 建群全流程离线验证（建群→切换→@跨群→解散）
+.venv\Scripts\python.exe scripts\dev\verify_groupchat.py
+
 # 上下文与记忆自检
 .venv\Scripts\python.exe scripts\dev\verify_context.py
 .venv\Scripts\python.exe scripts\dev\verify_memory.py
@@ -103,6 +109,50 @@ python main.py --task "项目经理月度汇报"
 # 法务知识库入库
 .venv\Scripts\python.exe scripts\ops\ingest_legal_kb.py
 ```
+
+## 对话模式
+
+交互式 CLI 启动时先选择对话模式，直接回车默认快速模式：
+
+- **快速模式**：普通消息由主 Agent 调度子 Agent；`@` 按普通文本处理。
+- **协作模式**：先选择默认群、现有群或新建群，所有普通消息进入当前群聊。
+
+模式绑定本次 CLI 运行，创建后不可切换，也不提供 `/mode` 命令；需要另一种模式时
+请退出并重新启动。`python main.py --task "..."` 保持一次性任务行为，固定使用快速模式。
+
+## 协作模式与群聊
+
+选择协作模式后，可在聊天中用 `@` 点名成员，或使用 `/group` 前缀管理群聊：
+
+```text
+@催费助手 分析下欠款账龄
+@法务助手 物业费诉讼时效是多久
+@all 欠费催收有哪些法律红线要注意
+/group 催缴函怎么写才合规
+```
+
+规则（详见 `agents/groupchat/`）：
+
+- 有 `@` 时仅被 @ 者回应（支持一次 @ 多个、`@all`）；写错名字会提示并自动分配。
+- 无 `@` 时各成员按自身 router（工具/技能的词面+tag）自荐打分，没人举手则主 agent 兜底直答。
+- manager 收成员原始输出、按用户表达偏好改写整理后，以一条 manager 消息统一发布（群里只有整理版，可溯源 raw 只在 verbose 日志）。
+- 记忆三层：成员私有库（领域状态，他人不可见）+ 群共享库（结论双写，所有人可见，`episodic` 落盘重启仍在）+ manager 习惯库（表达偏好，落盘 `MEMORY.md` 带 `[表达偏好:群名]` 前缀）。
+
+### 建群与多群
+
+```text
+/group create 催收群 @催费 @法务   建群并自动切换（manager恒在，不用指定）
+/group list                        列出全部群（名称/成员/活跃标记/轮数）
+/group switch 催收群                切换活跃群
+/group show                        看活跃群详情
+/group add @法务                   给活跃群加人
+/group remove @催费                从活跃群移除人（至少留1人）
+/group disband 催收群               解散群（默认群不可解散）
+```
+
+- 同时只活跃一个群，`@` 解析与自荐只看活跃群；`@` 到非本群成员会提示并群内自荐。
+- 每群独立共享历史与共享记忆（`session_id=group-<群名>`）；切换群时自动摘挂共享召回 provider，不串记忆。
+- 已知局限：成员**私有**召回库暂跨群共享（`MemoryRecallProvider.remember` 无 session 参数），后续版本再隔离。
 
 ## 催缴策略 RL
 

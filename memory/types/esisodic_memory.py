@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..base import BaseMemory, MemoryItem, MemoryConfig
 from ..storage.doc_store import SQLiteDocumentStore
-from ..embedding import get_text_embedder, get_dimension
+from ..embedding import (
+    embedding_collection_name,
+    get_text_embedder,
+    get_dimension,
+)
 from ..storage.qdrant import QdrantConnectionManager, QdrantVectorStore
 from core.paths import MEMORY_STORAGE_DIR
 
@@ -65,6 +69,13 @@ class EpisodeMemory(BaseMemory):
 
         #加载embedding模型
         self.embedder=get_text_embedder()
+        self.embedding_dimension = get_dimension(
+            default=getattr(self.embedder, "dimension", 384)
+        )
+        self.vector_collection_name = embedding_collection_name(
+            "episodic_vectors",
+            explicit_env="EPISODIC_VECTOR_COLLECTION",
+        )
 
         #向量存储  （Qdrant）
         try:
@@ -73,14 +84,78 @@ class EpisodeMemory(BaseMemory):
             self.vector_store=QdrantConnectionManager.get_instance(
                 url=qd_url,
                 api_key=qd_api_key,
-                collection_name=os.getenv("QDRANT_COLLECTION_NAME","memory_vectors"),
-                vector_size=get_dimension(default=getattr(self.embedder,"dimension",384)),
+                collection_name=self.vector_collection_name,
+                vector_size=self.embedding_dimension,
                 distance=os.getenv("QDRANT_DISTANCE","cosine")
             )
+            vector_size = (
+                (self.vector_store.get_collection_info().get("config") or {})
+                .get("vector_size")
+            )
+            if vector_size is not None and int(vector_size) != self.embedding_dimension:
+                raise ValueError(
+                    f"Episodic collection {self.vector_collection_name!r} expects "
+                    f"{vector_size} dimensions, active model returns "
+                    f"{self.embedding_dimension}"
+                )
         except Exception as e:
             logger.warning(f"Qdrant初始化失败，向量存储不可用: {e}")
             self.vector_store=None
 
+        self._sync_missing_vectors()
+
+    def _sync_missing_vectors(self) -> None:
+        """Re-embed durable episodic rows when the vector index is incomplete."""
+        if self.vector_store is None:
+            return
+        try:
+            docs = self.doc_store.search_memories(
+                memory_type="episodic",
+                limit=10000,
+            )
+            if not docs:
+                return
+            stats = self.vector_store.get_collection_stats()
+            vector_count = int(
+                stats.get("points_count")
+                or stats.get("vectors_count")
+                or 0
+            )
+            if vector_count >= len(docs):
+                return
+            vectors = []
+            metadata = []
+            ids = []
+            for doc in docs:
+                vector = self.embedder.encode(doc["content"])
+                if hasattr(vector, "tolist"):
+                    vector = vector.tolist()
+                properties = doc.get("properties") or {}
+                vectors.append([float(value) for value in vector])
+                metadata.append(
+                    {
+                        "memory_id": doc["memory_id"],
+                        "user_id": doc["user_id"],
+                        "memory_type": "episodic",
+                        "importance": doc.get("importance", 0.5),
+                        "session_id": properties.get("session_id"),
+                        "content": doc["content"],
+                    }
+                )
+                ids.append(doc["memory_id"])
+            if vectors:
+                self.vector_store.add_vectors(
+                    vectors=vectors,
+                    metadata=metadata,
+                    ids=ids,
+                )
+                logger.info(
+                    "Episodic vector index resynced: db=%d collection=%d",
+                    len(docs),
+                    vector_count,
+                )
+        except Exception as exc:
+            logger.warning("Episodic vector resync failed: %s", exc)
 
     def add(
             self,

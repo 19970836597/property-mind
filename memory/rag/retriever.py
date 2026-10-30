@@ -5,6 +5,11 @@ from typing import List, Dict, Optional, Any
 
 from ..storage.qdrant import QdrantVectorStore
 from .indexer import embed_query, _create_default_vector_store
+from memory.recall import (
+    hard_signature_terms,
+    signature_terms,
+    split_query,
+)
 
 
 def search_vectors(
@@ -40,6 +45,155 @@ def search_vectors(
     except Exception as e:
         print(f"[WARNING] RAG search failed: {e}")
         return []
+
+
+def search_vectors_hybrid(
+    store=None,
+    query: str = "",
+    top_k: int = 5,
+    rag_namespace: Optional[str] = None,
+    score_threshold: Optional[float] = None,
+    candidate_k: int = 50,
+    cache: Optional[Dict[str, Any]] = None,
+) -> List[Dict]:
+    """Dense + character-lexical retrieval with exact-identifier filtering.
+
+    The function returns at most one best evidence chunk per independently
+    answerable query segment. This avoids padding results with low-confidence
+    chunks solely to satisfy ``top_k``.
+    """
+    if not query:
+        return []
+    if store is None:
+        store = _create_default_vector_store()
+
+    top_k = max(1, int(top_k))
+    candidate_k = max(top_k, int(candidate_k))
+    threshold = (
+        float(score_threshold)
+        if score_threshold is not None
+        else float(os.getenv("RAG_HYBRID_MIN_SCORE", "0.30"))
+    )
+    where = {
+        "memory_type": "rag_chunk",
+        "is_rag_data": True,
+        "data_source": "rag_pipeline",
+    }
+    if rag_namespace:
+        where["rag_namespace"] = rag_namespace
+
+    cache = cache if cache is not None else {}
+    if "chunks" not in cache or "vectorizer" not in cache:
+        payloads = store.scroll_payloads(where=where, max_points=10000)
+        chunks = [
+            payload
+            for payload in payloads
+            if str(payload.get("content", "")).strip()
+        ]
+        if not chunks:
+            return []
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
+        vectorizer = TfidfVectorizer(
+            analyzer="char",
+            ngram_range=(2, 3),
+            lowercase=True,
+            sublinear_tf=True,
+        )
+        matrix = vectorizer.fit_transform(
+            [str(chunk.get("content", "")) for chunk in chunks]
+        )
+        cache.update(
+            {
+                "chunks": chunks,
+                "vectorizer": vectorizer,
+                "matrix": matrix,
+            }
+        )
+
+    chunks = cache["chunks"]
+    vectorizer = cache["vectorizer"]
+    matrix = cache["matrix"]
+    selected: Dict[str, Dict] = {}
+
+    for segment in split_query(query):
+        dense_hits = store.search_similar(
+            query_vector=embed_query(segment),
+            limit=candidate_k,
+            where=where,
+        )
+        candidates: Dict[str, Dict] = {}
+        dense_scores: Dict[str, float] = {}
+        for hit in dense_hits:
+            metadata = dict(hit.get("metadata") or {})
+            memory_id = str(metadata.get("memory_id") or hit.get("id"))
+            candidates[memory_id] = {
+                "id": hit.get("id") or memory_id,
+                "score": float(hit.get("score") or 0.0),
+                "metadata": metadata,
+            }
+            dense_scores[memory_id] = max(0.0, float(hit.get("score") or 0.0))
+
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        lexical_scores = cosine_similarity(
+            vectorizer.transform([segment]), matrix
+        ).ravel()
+        lexical_order = lexical_scores.argsort()[::-1][:candidate_k]
+
+        for index in lexical_order:
+            chunk = chunks[int(index)]
+            memory_id = str(chunk.get("memory_id") or chunk.get("doc_id"))
+            candidate = candidates.get(memory_id)
+            if candidate is None:
+                candidate = {
+                    "id": memory_id,
+                    "score": 0.0,
+                    "metadata": dict(chunk),
+                }
+                candidates[memory_id] = candidate
+            candidate["_lexical"] = max(
+                0.0, float(lexical_scores[int(index)])
+            )
+
+        terms = signature_terms(segment)
+        required_terms = hard_signature_terms(segment)
+        ranked = []
+        for memory_id, candidate in candidates.items():
+            content = str(candidate["metadata"].get("content", ""))
+            exact_hits = sum(1 for term in terms if term.lower() in content.lower())
+            signature_score = exact_hits / len(terms) if terms else 0.0
+            fit_score = (
+                0.50 * dense_scores.get(memory_id, 0.0)
+                + 0.32 * float(candidate.get("_lexical", 0.0))
+                + 0.18 * signature_score
+            )
+            if required_terms:
+                if not all(
+                    term.lower() in content.lower() for term in required_terms
+                ):
+                    continue
+                fit_score += 0.05
+            candidate["score"] = fit_score
+            ranked.append(candidate)
+
+        if not ranked:
+            continue
+        best = max(ranked, key=lambda item: float(item["score"]))
+        if float(best["score"]) < threshold:
+            continue
+        dedup_key = str(
+            best["metadata"].get("content_hash")
+            or best["metadata"].get("doc_id")
+            or best["id"]
+        )
+        if dedup_key not in selected:
+            selected[dedup_key] = best
+
+    results = sorted(
+        selected.values(), key=lambda item: float(item["score"]), reverse=True
+    )
+    return results[:top_k]
 
 
 def _prompt_mqe(query: str, n: int) -> List[str]:
@@ -434,10 +588,16 @@ def create_rag_pipeline(
     qdrant_url: Optional[str] = None,
     qdrant_api_key: Optional[str] = None,
     collection_name: str = "hello_agents_rag_vectors",
-    rag_namespace: str = "default"
+    rag_namespace: str = "default",
+    retriever_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    from ..embedding import get_dimension
-    dimension = get_dimension(384)
+    from ..embedding import get_text_embedder
+
+    embedder = get_text_embedder()
+    dimension = int(getattr(embedder, "dimension", 0) or 384)
+    mode = (retriever_mode or os.getenv("RAG_RETRIEVER_MODE", "hybrid")).strip().lower()
+    if mode not in {"legacy", "hybrid"}:
+        raise ValueError(f"RAG_RETRIEVER_MODE must be legacy or hybrid, got {mode!r}")
 
     store = QdrantVectorStore(
         url=qdrant_url,
@@ -446,6 +606,14 @@ def create_rag_pipeline(
         vector_size=dimension,
         distance="cosine"
     )
+    actual_size = (store.get_collection_info().get("config") or {}).get("vector_size")
+    if actual_size is not None and int(actual_size) != int(dimension):
+        raise ValueError(
+            f"Qdrant collection {collection_name!r} expects {actual_size} dimensions "
+            f"but the active embedding model returns {dimension}. Use a versioned "
+            "384-dim collection or re-index with a matching model."
+        )
+    hybrid_cache: Dict[str, Any] = {}
 
     def add_documents(file_paths: List[str], chunk_size: int = 800, chunk_overlap: int = 100):
         from .chunker import load_and_chunk_texts
@@ -462,6 +630,7 @@ def create_rag_pipeline(
             chunks=chunks,
             rag_namespace=rag_namespace
         )
+        hybrid_cache.clear()
         return len(chunks)
 
     def search(query: str, top_k: int = 8, score_threshold: Optional[float] = None):
@@ -490,14 +659,32 @@ def create_rag_pipeline(
             score_threshold=score_threshold
         )
 
+    def search_hybrid(
+        query: str,
+        top_k: int = 5,
+        score_threshold: Optional[float] = None,
+    ):
+        return search_vectors_hybrid(
+            store=store,
+            query=query,
+            top_k=top_k,
+            rag_namespace=rag_namespace,
+            score_threshold=score_threshold,
+            cache=hybrid_cache,
+        )
+
     def get_stats():
         return store.get_collection_stats()
 
     return {
         "store": store,
         "namespace": rag_namespace,
+        "retriever_mode": mode,
+        "embedding_model": getattr(embedder, "model_name", None),
+        "embedding_dimension": dimension,
         "add_documents": add_documents,
         "search": search,
         "search_advanced": search_advanced,
+        "search_hybrid": search_hybrid,
         "get_stats": get_stats
     }

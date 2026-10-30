@@ -50,9 +50,10 @@ class RAGTool(Tool):
         knowledge_base_path: str = str(RAG_STORAGE_DIR),
         qdrant_url: str = None,
         qdrant_api_key: str = None,
-        collection_name: str = "rag_knowledge_base",
+        collection_name: Optional[str] = None,
         rag_namespace: str = "default",
-        expandable: bool = False
+        expandable: bool = False,
+        retriever_mode: Optional[str] = None,
     ):
         """初始化RAG工具
 
@@ -73,6 +74,22 @@ class RAGTool(Tool):
         self.knowledge_base_path = knowledge_base_path
         self.qdrant_url = qdrant_url or os.getenv("QDRANT_URL")
         self.qdrant_api_key = qdrant_api_key or os.getenv("QDRANT_API_KEY")
+        self.retriever_mode = (
+            retriever_mode or os.getenv("RAG_RETRIEVER_MODE", "hybrid")
+        ).strip().lower()
+        if self.retriever_mode not in {"legacy", "hybrid"}:
+            raise ValueError(
+                f"RAG_RETRIEVER_MODE must be legacy or hybrid, "
+                f"got {self.retriever_mode!r}"
+            )
+        if collection_name is None:
+            if self.retriever_mode == "hybrid":
+                collection_name = os.getenv(
+                    "RAG_HYBRID_COLLECTION",
+                    "rag_knowledge_base_local_minilm_384_v1",
+                )
+            else:
+                collection_name = "rag_knowledge_base"
         self.collection_name = collection_name
         self.rag_namespace = rag_namespace
 
@@ -107,7 +124,8 @@ class RAGTool(Tool):
                 qdrant_url=self.qdrant_url,
                 qdrant_api_key=self.qdrant_api_key,
                 collection_name=self.collection_name,
-                rag_namespace=self.rag_namespace
+                rag_namespace=self.rag_namespace,
+                retriever_mode=self.retriever_mode,
             )
             self._pipelines[self.rag_namespace] = default_pipeline
 
@@ -145,7 +163,8 @@ class RAGTool(Tool):
             qdrant_url=self.qdrant_url,
             qdrant_api_key=self.qdrant_api_key,
             collection_name=self.collection_name,
-            rag_namespace=target_ns
+            rag_namespace=target_ns,
+            retriever_mode=self.retriever_mode,
         )
         self._pipelines[target_ns] = pipeline
         return pipeline
@@ -213,7 +232,7 @@ class RAGTool(Tool):
                 return self._search(
                     query=parameters.get("query") or parameters.get("question"),
                     limit=parameters.get("limit", 5),
-                    min_score=parameters.get("min_score", 0.1),
+                    min_score=parameters.get("min_score"),
                     enable_advanced_search=parameters.get("enable_advanced_search", True),
                     max_chars=parameters.get("max_chars", 1200),
                     include_citations=parameters.get("include_citations", True),
@@ -434,7 +453,7 @@ class RAGTool(Tool):
         self,
         query: str,
         limit: int = 5,
-        min_score: float = 0.1,
+        min_score: Optional[float] = None,
         enable_advanced_search: bool = True,
         max_chars: int = 1200,
         include_citations: bool = True,
@@ -465,19 +484,25 @@ class RAGTool(Tool):
             pipeline = self._get_pipeline(namespace)
 
             # 根据配置选择搜索策略
-            if enable_advanced_search:
+            if self.retriever_mode == "hybrid":
+                results = pipeline["search_hybrid"](
+                    query=query,
+                    top_k=limit,
+                    score_threshold=min_score,
+                )
+            elif enable_advanced_search:
                 results = pipeline["search_advanced"](
                     query=query,
                     top_k=limit,
                     enable_mqe=True,
                     enable_hyde=True,
-                    score_threshold=min_score if min_score > 0 else None
+                    score_threshold=min_score if min_score and min_score > 0 else None
                 )
             else:
                 results = pipeline["search"](
                     query=query,
                     top_k=limit,
-                    score_threshold=min_score if min_score > 0 else None
+                    score_threshold=min_score if min_score and min_score > 0 else 0.1
                 )
 
             if not results:
@@ -584,7 +609,12 @@ class RAGTool(Tool):
             pipeline = self._get_pipeline(namespace)
             search_start = time.time()
 
-            if enable_advanced_search:
+            if self.retriever_mode == "hybrid":
+                results = pipeline["search_hybrid"](
+                    query=user_question,
+                    top_k=limit,
+                )
+            elif enable_advanced_search:
                 results = pipeline["search_advanced"](
                     query=user_question,
                     top_k=limit,
@@ -823,7 +853,7 @@ class RAGTool(Tool):
             f"\n⚡ 检索: {search_time}ms | 生成: {llm_time}ms | 平均相似度: {avg_score:.3f}"
         )
 
-        return "\n".join(result)
+        return "\n".join(result)###
 
     # ================================================================
     # 管理操作
@@ -889,6 +919,10 @@ class RAGTool(Tool):
                 f"✅ LLM 连接: {'正常' if hasattr(self, 'llm') else '异常'}"
             ])
 
+            stats_info.insert(
+                2,
+                f"检索模式: {pipeline.get('retriever_mode', self.retriever_mode)}",
+            )
             return "\n".join(stats_info)
 
         except Exception as e:
@@ -928,7 +962,8 @@ class RAGTool(Tool):
                     qdrant_url=self.qdrant_url,
                     qdrant_api_key=self.qdrant_api_key,
                     collection_name=self.collection_name,
-                    rag_namespace=namespace_id
+                    rag_namespace=namespace_id,
+                    retriever_mode=self.retriever_mode,
                 )
                 return f"✅ 知识库已成功清空（命名空间：{namespace_id}）"
             else:
