@@ -84,7 +84,7 @@ def choose_conversation_mode(
 
     while True:
         try:
-            raw = input_fn("选择 [1]: ")
+            raw = input_fn("选择（1/2） : ")
         except (EOFError, KeyboardInterrupt):
             output_fn("\n未选择对话模式，已退出。")
             return None

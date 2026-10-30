@@ -144,7 +144,7 @@ def build_sub_agent(
     router = CapabilityRouter(f"{name}_router")
     for tool in tools:
         router.add_tool(tool)
-
+    
     agent = ReActAgent(
         name=agent_name or name,
         llm=llm,
@@ -155,5 +155,5 @@ def build_sub_agent(
         enable_intent_routing=False,
         verbose=verbose,
     )
-
+    
     return SubAgentTool(agent, name=name, description=description, tags=tags)

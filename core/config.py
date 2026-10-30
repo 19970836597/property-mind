@@ -15,7 +15,7 @@ from typing_extensions import Any
 class  Config(BaseModel):
      #llm
      
-     default_provider:str="deepseek"
+     default_provider:str="ollama"
      default_token:str=""
      temperature:float=0.7
      max_tokens:Optional[int]= None

@@ -292,7 +292,7 @@ class ReActAgent(Agent):
         * 工作记忆（MemoryRecallProvider.remember）——本进程内按轮召回；
         * 项目 MEMORY.md 落盘——工作记忆是纯内存的，**重启即失**。
           落盘 + reload 让沉淀的事实重启仍在、下轮即注入
-          （这正是 Claude Code 的做法：自动记忆写文件）。
+         。
         """
         provider = self._recall_provider()
         if provider is None or provider._disabled:

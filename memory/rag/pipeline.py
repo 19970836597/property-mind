@@ -1,9 +1,9 @@
 """RAG Pipeline 模块 - 向后兼容的重导出入口
 
 所有功能已拆分到独立模块中:
-- document.py:  数据模型 (Document, DocumentChunk, DocumentProcessor)
+- document.py:  数据模型 (Document, DocumentChunk)
 - parser.py:    文档解析 (_convert_to_markdown, etc.)
-- chunker.py:   文档分块 (load_and_chunk_texts, etc.)
+- chunker.py:   文档分块 (DocumentProcessor, load_and_chunk_texts, etc.)
 - indexer.py:   向量索引 (index_chunks, embed_query, etc.)
 - retriever.py: 检索查询 (search_vectors, create_rag_pipeline, etc.)
 
@@ -11,7 +11,7 @@
 """
 
 # 数据模型
-from .document import Document, DocumentChunk, DocumentProcessor
+from .document import Document, DocumentChunk
 
 # 解析器
 from .parser import (
@@ -25,6 +25,7 @@ from .parser import (
 
 # 分块器
 from .chunker import (
+    DocumentProcessor,
     _detect_lang,
     _is_cjk,
     _hard_split_text,
@@ -46,6 +47,7 @@ from .indexer import (
 # 检索器
 from .retriever import (
     search_vectors,
+    search_vectors_hybrid,
     _prompt_mqe,
     _prompt_hyde,
     search_vectors_expanded,

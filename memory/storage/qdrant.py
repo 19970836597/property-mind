@@ -430,6 +430,41 @@ class QdrantVectorStore:
         except Exception as e:
             logger.error(f"❌ 向量搜索失败: {e}")
             return []
+
+    def scroll_payloads(
+        self,
+        where: Optional[Dict[str, Any]] = None,
+        max_points: int = 10000,
+    ) -> List[Dict[str, Any]]:
+        """Read payloads for building a lexical index without loading vectors."""
+        conditions = []
+        for key, value in (where or {}).items():
+            if isinstance(value, (str, int, float, bool)):
+                conditions.append(
+                    FieldCondition(key=key, match=MatchValue(value=value))
+                )
+        query_filter = Filter(must=conditions) if conditions else None
+
+        payloads: List[Dict[str, Any]] = []
+        offset = None
+        page_size = min(256, max(1, int(max_points)))
+        try:
+            while len(payloads) < max_points:
+                points, offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=query_filter,
+                    limit=min(page_size, max_points - len(payloads)),
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                payloads.extend(dict(point.payload or {}) for point in points)
+                if offset is None or not points:
+                    break
+            return payloads
+        except Exception as e:
+            logger.error(f"❌ 读取Qdrant payload失败: {e}")
+            return []
     
     def delete_vectors(self, ids: List[str]) -> bool:
         """
@@ -517,10 +552,18 @@ class QdrantVectorStore:
             
             info = {
                 "name": self.collection_name,
-                "vectors_count": collection_info.vectors_count,
-                "indexed_vectors_count": collection_info.indexed_vectors_count,
-                "points_count": collection_info.points_count,
-                "segments_count": collection_info.segments_count,
+                "vectors_count": getattr(
+                    collection_info,
+                    "vectors_count",
+                    getattr(collection_info, "points_count", 0),
+                ),
+                "indexed_vectors_count": getattr(
+                    collection_info,
+                    "indexed_vectors_count",
+                    getattr(collection_info, "points_count", 0),
+                ),
+                "points_count": getattr(collection_info, "points_count", 0),
+                "segments_count": getattr(collection_info, "segments_count", 0),
                 "config": {
                     "vector_size": self.vector_size,
                     "distance": self.distance.value,
