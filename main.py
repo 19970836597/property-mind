@@ -402,6 +402,7 @@ def main() -> None:
         )
 
     llm = LLM()
+    print(f"LLM: {llm.provider}/{llm.model} @ {llm.base_url}")
     router = build_router(llm)
 
     print()

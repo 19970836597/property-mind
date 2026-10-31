@@ -15,7 +15,7 @@ from typing_extensions import Any
 class  Config(BaseModel):
      #llm
      
-     default_provider:str="ollama"
+     default_provider:str="auto"
      default_token:str=""
      temperature:float=0.7
      max_tokens:Optional[int]= None
@@ -29,7 +29,8 @@ class  Config(BaseModel):
 
      @classmethod   #省去实例化对象
      def from_env(cls)->"Config":
-          return cls(debug=os.getenv("DEBUG", "false").lower() == "true",
+          return cls(default_provider=os.getenv("LLM_PROVIDER", "auto").strip().lower() or "auto",
+            debug=os.getenv("DEBUG", "false").lower() == "true",
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             temperature=float(os.getenv("TEMPERATURE", "0.7")),
             max_tokens=int(os.getenv("MAX_TOKENS")) if os.getenv("MAX_TOKENS") else None,

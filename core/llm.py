@@ -95,15 +95,79 @@ def _env(name: Optional[str]) -> Optional[str]:
     return value if value else None
 
 
+#: 写了等于没写的占位值（多见于从 .env.example 复制后忘记改的项）。
+_PLACEHOLDER_VALUES = frozenset({
+    "xxx", "sk-xxx", "ms-xxx", "***", "none", "null",
+    "placeholder", "changeme", "your-key-here",
+})
+
+
+def _real_env(name: Optional[str]) -> Optional[str]:
+    """读取环境变量；空字符串与常见占位值按未配置处理。"""
+    if not name:
+        return None
+    value = os.getenv(name)
+    if not value:
+        return None
+    if value.strip().lower() in _PLACEHOLDER_VALUES:
+        return None
+    return value
+
+
+def _infer_provider_from_model(model_name: Optional[str]) -> Optional[str]:
+    """从模型名推断 provider；名字模棱两可时返回 None（不硬猜）。
+
+    只认无歧义的写法：
+    * ``xxx:tag``（冒号标签）→ 本地 ollama（如 qwen3.5:2b、deepseek-r1:8b）；
+    * 名字里带 deepseek / gpt- / moonshot-kimi / glm / qwen-plus-max-turbo
+      → 对应云端渠道。
+    其他一律返回 None，走常规的环境变量检测。
+    """
+    if not model_name:
+        return None
+    m = model_name.strip().lower()
+    if not m or "://" in m:
+        return None
+    if ":" in m:
+        # 云端模型 id 不用冒号标签写法，这基本一定是 ollama（或兼容端）
+        return "ollama"
+    if "deepseek" in m:
+        return "deepseek"
+    if m.startswith(("gpt-", "chatgpt", "o1", "o3")) or "openai" in m:
+        return "openai"
+    if "moonshot" in m or "kimi" in m:
+        return "kimi"
+    if "glm" in m:
+        return "zhipu"
+    if any(tag in m for tag in ("qwen-plus", "qwen-max", "qwen-turbo", "qwen-flash")):
+        return "qwen"
+    return None
+
+
 def _auto_detect_provider(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    model_name: Optional[str] = None,
 ) -> str:
     """仅在用户没有指定 provider 时进行自动检测。
 
     注意：
     如果 provider 已经显式指定，就绝不调用这个函数覆盖用户选择。
+
+    优先级：模型名线索 > base_url 线索 > 各家真实 API Key。
+    OLLAMA_HOST 这类本地变量不再一票否决——它经常是历史残留，
+    而模型名（deepseek-chat）才是用户当下真实意图。
     """
+    # 0. 模型名无歧义时直接定（deepseek-chat 不可能是 ollama 本地模型；
+    #    反过来 "model:tag" 冒号写法基本一定是 ollama）。
+    hinted = _infer_provider_from_model(
+        model_name or _env("LLM_MODEL_ID") or ""
+    )
+    if hinted:
+        key_env = DEFAULT_CONFIG.get(hinted, {}).get("api_key_env")
+        if hinted in ("ollama", "vllm") or _real_env(key_env):
+            return hinted
+
     if base_url:
         url = base_url.lower()
         if "api.openai.com" in url:
@@ -133,24 +197,27 @@ def _auto_detect_provider(
         if api_key.startswith("ms-"):
             return "modelscope"
 
-    # 不再因为 OPENAI_API_KEY 存在就强制选择 openai。
-    # 只有在没有任何更明确线索时才使用 openai。
-    if _env("OLLAMA_HOST") or _env("OLLAMA_API_KEY"):
-        return "ollama"
-    if _env("VLLM_HOST") or _env("VLLM_API_KEY"):
-        return "vllm"
-    if _env("DEEPSEEK_API_KEY"):
+    # 各家云端 Key：占位值（sk-xxx / ms-xxx / xxx）不算数。
+    # 注意排在 OLLAMA_HOST 之前——那个变量经常是历史残留，
+    # 不能让它一票否决用户真实配置的云端 Key。
+    if _real_env("DEEPSEEK_API_KEY"):
         return "deepseek"
-    if _env("DASHSCOPE_API_KEY"):
+    if _real_env("DASHSCOPE_API_KEY"):
         return "qwen"
-    if _env("MODELSCOPE_API_KEY"):
+    if _real_env("MODELSCOPE_API_KEY"):
         return "modelscope"
-    if _env("KIMI_API_KEY") or _env("MOONSHOT_API_KEY"):
+    if _real_env("KIMI_API_KEY") or _real_env("MOONSHOT_API_KEY"):
         return "kimi"
-    if _env("ZHIPU_API_KEY") or _env("GLM_API_KEY"):
+    if _real_env("ZHIPU_API_KEY") or _real_env("GLM_API_KEY"):
         return "zhipu"
-    if _env("OPENAI_API_KEY"):
+    if _real_env("OPENAI_API_KEY"):
         return "openai"
+
+    # 本地模型：只有走到这里（无模型线索、无云端 Key）才考虑。
+    if _env("OLLAMA_HOST") or _real_env("OLLAMA_API_KEY"):
+        return "ollama"
+    if _env("VLLM_HOST") or _real_env("VLLM_API_KEY"):
+        return "vllm"
 
     return "openai"
 
@@ -207,8 +274,18 @@ class LLM:
             # 1. 用户明确指定 provider
             self.provider = provider.lower()
         else:
-            # 2. 用户没有指定 provider
-            self.provider = self.global_config.default_provider.lower()
+            # 2. 用户没有指定 provider：先看 LLM_PROVIDER / Config，
+            #    仍为 auto 则按环境变量自动检测（有 deepseek key 就走 deepseek，
+            #    而不是死守 ollama localhost 导致 Connection error）
+            configured = (self.global_config.default_provider or "auto").lower()
+            if configured and configured != "auto":
+                self.provider = configured
+            else:
+                self.provider = _auto_detect_provider(
+                    api_key or _env("LLM_API_KEY"),
+                    base_url or _env("LLM_BASE_URL"),
+                    model or _env("LLM_MODEL_ID"),
+                )
         #用户指定的 provider 不在支持的列表中
         if self.provider not in DEFAULT_CONFIG:
             raise HelloAgentsException(
@@ -236,8 +313,8 @@ class LLM:
         # ----------------------------------------------------
         # 3. api_key：用户 > provider > 默认配置
         # ----------------------------------------------------
-        provider_api_key = _env(config.get("api_key_env"))
-        default_api_key = _env("LLM_API_KEY")
+        provider_api_key = _real_env(config.get("api_key_env"))
+        default_api_key = _real_env("LLM_API_KEY")
 
         self.api_key = (
             api_key
@@ -293,7 +370,8 @@ class LLM:
 
         if not self.api_key:
             raise HelloAgentsException(
-                f"provider={self.provider} 未配置 api_key。"
+                f"provider={self.provider} 未配置 api_key"
+                f"（请设置 {config.get('api_key_env')} 或 LLM_API_KEY）。"
             )
 
         self._client = self._create_client()
